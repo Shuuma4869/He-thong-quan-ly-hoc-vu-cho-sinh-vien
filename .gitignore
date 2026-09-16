@@ -1,0 +1,49 @@
+# Environment and secrets
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.jks
+
+# Frontend
+node_modules/
+.next/
+out/
+coverage/
+playwright-report/
+test-results/
+blob-report/
+*.tsbuildinfo
+npm-debug.log*
+pnpm-debug.log*
+package-lock.json
+yarn.lock
+
+# Backend
+target/
+*.log
+hs_err_pid*
+
+# Local infrastructure
+.data/
+docker-data/
+
+# IDE and operating system
+.idea/
+.vscode/
+!.vscode/extensions.json
+!.vscode/settings.json
+*.iml
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# Temporary and backup files
+*.tmp
+*.temp
+*.bak
+*.swp
+*~
+
