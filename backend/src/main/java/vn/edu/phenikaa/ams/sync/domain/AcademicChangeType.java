@@ -1,0 +1,17 @@
+package vn.edu.phenikaa.ams.sync.domain;
+
+public enum AcademicChangeType {
+    CLASS_ADDED,
+    CLASS_REMOVED,
+    CLASS_CANCELLED,
+    DATE_CHANGED,
+    TIME_CHANGED,
+    ROOM_CHANGED,
+    LECTURER_CHANGED,
+    EXAM_ADDED,
+    EXAM_CANCELLED,
+    EXAM_DATE_CHANGED,
+    EXAM_TIME_CHANGED,
+    EXAM_ROOM_CHANGED,
+    MULTIPLE_FIELDS_CHANGED
+}
