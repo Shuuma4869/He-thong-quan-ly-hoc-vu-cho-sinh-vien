@@ -1,0 +1,55 @@
+spring:
+  application:
+    name: ams
+  datasource:
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/ams}
+    username: ${DATABASE_USERNAME:ams}
+    password: ${DATABASE_PASSWORD:ams_local_only}
+  data:
+    redis:
+      host: ${REDIS_HOST:localhost}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+      timeout: 2s
+  flyway:
+    enabled: true
+    locations: classpath:db/migration
+  jpa:
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+    properties:
+      hibernate:
+        jdbc:
+          time_zone: UTC
+
+server:
+  port: ${SERVER_PORT:8080}
+  error:
+    include-message: never
+    include-stacktrace: never
+  shutdown: graceful
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+  endpoint:
+    health:
+      probes:
+        enabled: true
+      show-details: never
+
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+
+ams:
+  cors:
+    allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
+  sync:
+    schedule:
+      classes: ${SYNC_CLASSES_INTERVAL:PT3M}
+      grades: ${SYNC_GRADES_INTERVAL:PT20M}
+      curriculum: ${SYNC_CURRICULUM_INTERVAL:PT24H}
