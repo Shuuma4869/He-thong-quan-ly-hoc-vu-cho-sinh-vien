@@ -39,6 +39,10 @@ jobs:
         run: pnpm test
       - name: Build production
         run: pnpm build
+      - name: Cài Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Kiểm tra giao diện
+        run: pnpm test:e2e
 
   backend:
     name: Backend

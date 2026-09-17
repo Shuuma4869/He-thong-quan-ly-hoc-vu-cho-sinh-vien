@@ -50,6 +50,7 @@ Mở terminal khác:
 
 ```powershell
 cd frontend
+Copy-Item .env.example .env.local
 pnpm install --frozen-lockfile
 pnpm dev
 ```
@@ -67,12 +68,14 @@ pnpm lint
 pnpm typecheck
 pnpm test
 pnpm build
+pnpm exec playwright install chromium
+pnpm test:e2e
 
 cd ..\backend
 .\mvnw.cmd verify
 ```
 
-Test context backend dùng Testcontainers và cần Docker. Unit test độc lập vẫn chạy khi Docker chưa sẵn sàng.
+`mvnw.cmd test` chạy unit test. `mvnw.cmd verify` chạy thêm integration test với PostgreSQL và Redis qua Testcontainers; cần Docker và không tự bỏ qua khi Docker thiếu. Spring Boot 4.1 quản lý JUnit Jupiter 6, dùng cùng API test Jupiter.
 
 ## Branch và commit
 

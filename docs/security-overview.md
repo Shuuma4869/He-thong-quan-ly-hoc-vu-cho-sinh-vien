@@ -15,4 +15,6 @@ Security là yêu cầu cấp một của AMS. OWASP ASVS được dùng làm t�
 
 Cloudflare dự kiến đứng trước origin để cung cấp TLS, WAF, DDoS mitigation và edge rate limiting. PostgreSQL và Redis không public trực tiếp. Origin chỉ tin forwarded headers từ proxy được cấu hình rõ.
 
-Bootstrap chưa cung cấp cơ chế đăng nhập production. Các endpoint ngoài health và OpenAPI hiện yêu cầu authentication theo security foundation.
+Bootstrap chưa cung cấp cơ chế đăng nhập production. Không có tài khoản mặc định. Các endpoint ngoài health và OpenAPI yêu cầu authentication; CSRF giữ bật và CORS chỉ nhận origin cấu hình. Profile `prod` tắt OpenAPI và bật secure cookie.
+
+Đã có kiểm thử cho endpoint public, chặn request chưa xác thực, CSRF và CORS. Ownership, rate limiting, mã hóa token, OAuth và security audit pipeline chưa triển khai; bảng audit hiện mới là schema nền. Không triển khai production trước khi hoàn tất và kiểm chứng các phần này.
