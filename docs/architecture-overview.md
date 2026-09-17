@@ -33,8 +33,12 @@ Frontend gọi `/api/...` cùng origin; Next.js chuyển tiếp tới backend qu
 
 Frontend kiểm tra `/api/me` ở server tại protected layout và từng protected page. `AuthBoundary` duy trì current-user state, kiểm tra lại khi focus cửa sổ và mỗi phút. Backend vẫn là nơi quyết định quyền truy cập. Khi đăng nhập/đăng xuất, frontend xóa query cache; dữ liệu tài khoản không dùng cache dùng chung giữa request.
 
-Migration V2 mở rộng `app_user` sẵn có và thêm `user_preferences` quan hệ một-một qua UUID. Chưa tạo bảng chính sách tính điểm khi nghiệp vụ chưa được xác định. Email nhận thông báo chỉ là lựa chọn chưa xác minh; locale được lưu nhưng giao diện hiện vẫn bằng tiếng Việt.
+Migration V2 mở rộng `app_user` sẵn có và thêm `user_preferences` quan hệ một-một qua UUID. Phase 2 thêm grading policy theo phiên bản và lựa chọn policy ở StudentProfile, chưa có engine tính điểm. Email nhận thông báo chỉ là lựa chọn chưa xác minh; locale được lưu nhưng giao diện hiện vẫn bằng tiếng Việt.
 
 ## Dữ liệu và thay đổi
 
-Ở phase đồng bộ, snapshot nguồn sẽ được lưu bất biến để so sánh. Change Detection Engine sẽ tạo change record như `ROOM_CHANGED` hoặc `EXAM_TIME_CHANGED`; consumer calendar và email xử lý change record thay vì suy đoán lại từ dữ liệu mới. Bootstrap mới định nghĩa kiểu snapshot và change, chưa lưu snapshot hoặc chạy đồng bộ.
+Domain học vụ nằm trong `academic.domain`, change nằm trong `sync.domain`. Không có parser hoặc import adapter trong domain. Các tham chiếu dùng UUID nội bộ; catalog và kết quả được scope theo StudentProfile với composite FK chặn liên kết chéo hồ sơ. Đây là dữ liệu của từng user, chưa phải catalog toàn trường dùng chung.
+
+V3–V5 bổ sung persistence cho học vụ, grading policy, snapshot metadata và schedule change; Hibernate chỉ validate schema. Môn học, lớp mở theo học kỳ, buổi học và kỳ thi là các entity riêng. Buổi học giữ occurrence key không phụ thuộc giờ/phòng, có optimistic locking khi cập nhật. [ERD và các quyết định database](database-model.md) mô tả quan hệ, nullability và giới hạn.
+
+Snapshot DTO hiện là contract chuẩn hóa; metadata và change có thể lưu/đọc qua JPA nhưng chưa có use case import, repository học vụ, API CRUD hoặc engine phát hiện thay đổi. `DetectedAcademicChange` dùng entity UUID thay cho ID từ nguồn. Snapshot/change bất biến ở mapping Hibernate; payload snapshot đầy đủ và việc tính diff/hash chưa triển khai. Ở phase đồng bộ, engine mới đối soát nguồn và tạo change record như `ROOM_CHANGED` hoặc `EXAM_TIME_CHANGED` để các consumer xử lý.

@@ -37,6 +37,8 @@ Compose chỉ mở PostgreSQL và Redis trên `127.0.0.1`. Cấu hình mẫu dà
 
 V2 chuẩn hóa email về chữ thường, bổ sung password hash/trạng thái và preferences. User có từ V1 được giữ UUID, chuyển sang `DISABLED` với giá trị hash không dùng để đăng nhập (`!`). Nếu email cũ trùng nhau sau chuẩn hóa hoặc có role `SYSTEM`, migration sẽ dừng và rollback; cần kiểm tra dữ liệu trước khi nâng cấp, không tự xóa hoặc đổi quyền các bản ghi đó. V1 không bị sửa, Hibernate vẫn chỉ validate schema.
 
+V3–V5 thêm schema học vụ, không tự tạo hồ sơ sinh viên hay seed dữ liệu. `mvnw.cmd verify` kiểm tra database sạch và nâng cấp từ V2, mapping JPA và constraint bằng PostgreSQL thật trong Testcontainers. Phase 2 chưa có API nhập/sửa học vụ; xem [database model](database-model.md) trước khi thêm use case.
+
 ## Frontend
 
 ```powershell
