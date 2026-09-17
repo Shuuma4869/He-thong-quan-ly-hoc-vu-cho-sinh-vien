@@ -24,7 +24,7 @@ jobs:
         with:
           package_json_file: frontend/package.json
       - name: Cài Node.js
-        uses: actions/setup-node@v6
+        uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: pnpm
