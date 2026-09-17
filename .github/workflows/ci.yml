@@ -1,0 +1,63 @@
+name: Kiểm tra mã nguồn
+
+on:
+  push:
+    branches: [main, AMS-Solution]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  frontend:
+    name: Frontend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - name: Lấy mã nguồn
+        uses: actions/checkout@v6
+      - name: Cài pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          package_json_file: frontend/package.json
+      - name: Cài Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: 24
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - name: Cài dependency
+        run: pnpm install --frozen-lockfile
+      - name: Kiểm tra lint
+        run: pnpm lint
+      - name: Kiểm tra kiểu dữ liệu
+        run: pnpm typecheck
+      - name: Chạy unit test
+        run: pnpm test
+      - name: Build production
+        run: pnpm build
+      - name: Cài Chromium
+        run: pnpm exec playwright install --with-deps chromium
+      - name: Kiểm tra giao diện
+        run: pnpm test:e2e
+
+  backend:
+    name: Backend
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+    steps:
+      - name: Lấy mã nguồn
+        uses: actions/checkout@v6
+      - name: Cài Java 21
+        uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Chạy test và build
+        run: ./mvnw --batch-mode verify
