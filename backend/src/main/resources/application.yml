@@ -1,4 +1,8 @@
 spring:
+  session:
+    timeout: ${SESSION_TIMEOUT:30m}
+    redis:
+      namespace: ams:session
   config:
     import: optional:file:../.env[.properties]
   application:
@@ -30,6 +34,8 @@ server:
   servlet:
     session:
       cookie:
+        name: AMS_SESSION
+        path: /
         http-only: true
         same-site: lax
         secure: ${SESSION_COOKIE_SECURE:false}
@@ -37,6 +43,8 @@ server:
     include-message: never
     include-stacktrace: never
   shutdown: graceful
+  tomcat:
+    max-http-form-post-size: 8KB
 
 management:
   endpoints:

@@ -4,7 +4,7 @@
 
 AMS hỗ trợ sinh viên theo dõi kết quả học tập, chương trình đào tạo, lịch học, lịch thi và kế hoạch tốt nghiệp tại một nơi. Hệ thống được thiết kế để đồng bộ dữ liệu mà chính tài khoản sinh viên có quyền xem, phát hiện thay đổi và chuyển các sự kiện do AMS quản lý sang Google Calendar.
 
-> Dự án đang ở giai đoạn bootstrap. Phenikaa, Google Calendar và email chưa được kết nối thực tế; dashboard hiện chỉ là giao diện nền và không trình bày dữ liệu giả như dữ liệu production.
+> Phase 1 đã có tài khoản AMS, đăng nhập bằng session, khu vực yêu cầu đăng nhập và cài đặt cá nhân. Phenikaa, Google Calendar và email chưa được kết nối; dashboard chỉ là giao diện nền, không trình bày dữ liệu giả như dữ liệu production.
 
 ## Phạm vi chính
 
@@ -60,6 +60,8 @@ pnpm dev
 - Actuator health: `http://localhost:8080/actuator/health`
 - Swagger UI: `http://localhost:8080/swagger-ui.html`
 
+Mở `/register` để tạo tài khoản sinh viên, sau đó đăng nhập tại `/login`. Không có tài khoản admin mặc định. `/settings` lưu email nhận thông báo, múi giờ, ngôn ngữ ưu tiên và giao diện; email chưa được xác minh và chưa dùng để gửi thông báo.
+
 ## Kiểm tra
 
 ```powershell
@@ -76,6 +78,8 @@ cd ..\backend
 ```
 
 `mvnw.cmd test` chạy unit test. `mvnw.cmd verify` chạy thêm integration test với PostgreSQL và Redis qua Testcontainers; cần Docker và không tự bỏ qua khi Docker thiếu. Spring Boot 4.1 quản lý JUnit Jupiter 6, dùng cùng API test Jupiter.
+
+E2E cần Java 21, Docker và cổng `3000`, `8080` trống. Playwright tự khởi động cả frontend production và backend với database/Redis riêng; luồng tài khoản không mock API. Nếu vừa di chuyển route, chạy `pnpm exec next typegen` trước `pnpm typecheck` để cập nhật kiểu route.
 
 ## Branch và commit
 

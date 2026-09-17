@@ -7,9 +7,21 @@ import org.springframework.http.ProblemDetail;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.server.ResponseStatusException;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+
+    @ExceptionHandler(ResponseStatusException.class)
+    ProblemDetail handleStatus(ResponseStatusException exception) {
+        return ProblemDetail.forStatusAndDetail(exception.getStatusCode(), exception.getReason());
+    }
+
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    ProblemDetail handleUnreadableBody() {
+        return ProblemDetail.forStatusAndDetail(HttpStatus.BAD_REQUEST, "Nội dung yêu cầu không hợp lệ.");
+    }
 
     @ExceptionHandler(MethodArgumentNotValidException.class)
     ProblemDetail handleValidation(MethodArgumentNotValidException exception) {

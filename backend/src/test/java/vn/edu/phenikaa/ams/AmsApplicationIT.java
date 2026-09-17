@@ -22,9 +22,10 @@ class AmsApplicationIT {
     @Test
     void migrationCreatesBaselineSchema() {
         assertThat(jdbc.queryForObject(
-                "select count(*) from flyway_schema_history where version = '1' and success = true",
-                Integer.class)).isEqualTo(1);
+                "select count(*) from flyway_schema_history where version in ('1', '2') and success = true",
+                Integer.class)).isEqualTo(2);
         assertThat(jdbc.queryForObject("select count(*) from app_user", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from user_preferences", Integer.class)).isZero();
         assertThat(jdbc.queryForObject("select count(*) from security_audit_event", Integer.class)).isZero();
     }
 
