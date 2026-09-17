@@ -46,6 +46,8 @@ Frontend dùng kiểm tra session phía server cho protected pages và current-u
 
 Integration test dùng HTTP thật, PostgreSQL và Redis riêng để kiểm tra đăng ký, password hash, login/logout, session fixation, replay sau logout, CSRF, current user, ownership, validation và cookie production. E2E đi qua Next.js proxy và giao diện thật, gồm tải lại trang và lưu settings. Migration được kiểm tra trên database mới và nâng cấp từ V1.
 
-Email tài khoản và email nhận thông báo chưa được xác minh; không có nhãn xác minh giả, password reset hoặc email provider. Locale chỉ lưu lựa chọn, chưa đổi toàn bộ ngôn ngữ giao diện. Chính sách tính điểm để phase sau.
+Email tài khoản và email nhận thông báo chưa được xác minh; không có nhãn xác minh giả, password reset hoặc email provider. Locale chỉ lưu lựa chọn, chưa đổi toàn bộ ngôn ngữ giao diện. Phase 2 có model chính sách điểm nhưng chưa tính GPA/xếp loại.
+
+Học vụ được phân vùng theo StudentProfile liên kết với user. FK ghép chặn liên kết chéo hồ sơ, nhưng không thay thế authorization: use case học vụ sau này phải tìm hồ sơ từ user trong session và scope mọi truy vấn theo hồ sơ đó. Hiện chưa có API học vụ. Snapshot metadata và change chỉ lưu dữ liệu chuẩn hóa, không lưu raw credential/session hoặc response nguồn.
 
 Chưa có rate limiting đăng ký/đăng nhập, MFA, absolute session timeout hay quy trình quản trị/recovery. Bảng audit hiện mới là schema nền, chưa ghi sự kiện. OAuth và mã hóa token tích hợp chưa triển khai vì chưa có kết nối ngoài. Cần bổ sung và đánh giá các biện pháp bảo vệ phù hợp trước khi mở đăng ký trên internet; test Phase 1 không thay thế đánh giá bảo mật production.

@@ -14,4 +14,6 @@ AMS là ứng dụng cá nhân giúp sinh viên quản lý dữ liệu học v�
 
 Bootstrap thiết lập design system, API health, database migration, integration contracts, test và CI. Phase 1 bổ sung tài khoản AMS độc lập, đăng ký/đăng nhập/đăng xuất, session Redis, CSRF, thông tin người dùng hiện tại và cài đặt cá nhân. Dashboard và cài đặt yêu cầu đăng nhập.
 
-Chưa triển khai kết nối Phenikaa, Google Calendar, gửi email, xác minh email hoặc đặt lại mật khẩu. Chưa có dữ liệu học vụ thực tế, chính sách tính điểm hay giao diện quản trị tài khoản. Các contract tích hợp chỉ là ranh giới kiến trúc, không phải kết nối đã hoạt động.
+Phase 2 bổ sung model và persistence cho hồ sơ sinh viên, học kỳ, môn học, chương trình/tiên quyết, lần học/kết quả, lớp mở/buổi học/kỳ thi, snapshot metadata, schedule change và grading policy theo phiên bản. Chi tiết quan hệ, constraint và giới hạn ở [mô hình database](database-model.md).
+
+Chưa triển khai kết nối Phenikaa, Google Calendar, gửi email, xác minh email hoặc đặt lại mật khẩu. Chưa có dữ liệu học vụ thực tế, engine tính điểm/xếp loại hoặc giao diện quản trị tài khoản. Các contract tích hợp chỉ là ranh giới kiến trúc, không phải kết nối đã hoạt động.

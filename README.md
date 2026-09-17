@@ -4,7 +4,7 @@
 
 AMS hỗ trợ sinh viên theo dõi kết quả học tập, chương trình đào tạo, lịch học, lịch thi và kế hoạch tốt nghiệp tại một nơi. Hệ thống được thiết kế để đồng bộ dữ liệu mà chính tài khoản sinh viên có quyền xem, phát hiện thay đổi và chuyển các sự kiện do AMS quản lý sang Google Calendar.
 
-> Phase 1 đã có tài khoản AMS, đăng nhập bằng session, khu vực yêu cầu đăng nhập và cài đặt cá nhân. Phenikaa, Google Calendar và email chưa được kết nối; dashboard chỉ là giao diện nền, không trình bày dữ liệu giả như dữ liệu production.
+> Đã có tài khoản AMS, đăng nhập bằng session và cài đặt cá nhân. Phase 2 bổ sung domain/database học vụ chuẩn hóa, chưa có API học vụ hay import. Phenikaa, Google Calendar và email chưa được kết nối; dashboard chỉ là giao diện nền, không trình bày dữ liệu giả như dữ liệu production.
 
 ## Phạm vi chính
 
@@ -88,4 +88,4 @@ E2E cần Java 21, Docker và cổng `3000`, `8080` trống. Playwright tự kh�
 - Không tự merge, rebase `main`, force push hoặc xóa branch review.
 - Tất cả commit message viết bằng tiếng Việt, ngắn gọn và phản ánh đúng thay đổi.
 
-Xem thêm tại [tài liệu dự án](docs/project-overview.md) và [hướng dẫn môi trường](docs/development-setup.md).
+Xem thêm tại [tài liệu dự án](docs/project-overview.md), [mô hình dữ liệu học vụ](docs/database-model.md) và [hướng dẫn môi trường](docs/development-setup.md).
