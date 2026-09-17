@@ -20,7 +20,7 @@ jobs:
       - name: Lấy mã nguồn
         uses: actions/checkout@v6
       - name: Cài pnpm
-        uses: pnpm/action-setup@v4
+        uses: pnpm/action-setup@v6
         with:
           package_json_file: frontend/package.json
       - name: Cài Node.js
