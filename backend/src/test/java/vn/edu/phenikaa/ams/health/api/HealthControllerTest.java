@@ -19,6 +19,9 @@ import vn.edu.phenikaa.ams.config.SecurityConfiguration;
 @Import(SecurityConfiguration.class)
 class HealthControllerTest {
 
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private org.springframework.security.core.userdetails.UserDetailsService userDetailsService;
+
     @Autowired
     private MockMvc mockMvc;
 
@@ -33,7 +36,7 @@ class HealthControllerTest {
 
     @Test
     void rejectsUnauthenticatedPrivateRequests() throws Exception {
-        mockMvc.perform(get("/api/me/profile")).andExpect(status().isForbidden());
+        mockMvc.perform(get("/api/me/profile")).andExpect(status().isUnauthorized());
     }
 
     @Test
