@@ -1,4 +1,7 @@
 import { expect, test } from "@playwright/test";
+import { createAccountAndLogin } from "./auth-helpers";
+
+test.beforeEach(async ({ page }) => { await createAccountAndLogin(page); });
 
 test("hiển thị dashboard AMS", async ({ page }) => {
   await page.goto("/");

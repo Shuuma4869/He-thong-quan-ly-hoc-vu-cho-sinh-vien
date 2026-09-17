@@ -41,6 +41,12 @@ jobs:
         run: pnpm build
       - name: Cài Chromium
         run: pnpm exec playwright install --with-deps chromium
+      - name: Cài Java 21 cho E2E
+        uses: actions/setup-java@v6
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
       - name: Kiểm tra giao diện
         run: pnpm test:e2e
 
