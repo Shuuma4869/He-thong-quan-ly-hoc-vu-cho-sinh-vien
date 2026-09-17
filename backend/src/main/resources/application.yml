@@ -1,15 +1,17 @@
 spring:
+  config:
+    import: optional:file:../.env[.properties]
   application:
     name: ams
   datasource:
-    url: ${DATABASE_URL:jdbc:postgresql://localhost:5432/ams}
+    url: ${DATABASE_URL:jdbc:postgresql://localhost:5433/ams}
     username: ${DATABASE_USERNAME:ams}
     password: ${DATABASE_PASSWORD:ams_local_only}
   data:
     redis:
       host: ${REDIS_HOST:localhost}
       port: ${REDIS_PORT:6379}
-      password: ${REDIS_PASSWORD:}
+      password: ${REDIS_PASSWORD:ams_redis_local_only}
       timeout: 2s
   flyway:
     enabled: true
@@ -25,6 +27,12 @@ spring:
 
 server:
   port: ${SERVER_PORT:8080}
+  servlet:
+    session:
+      cookie:
+        http-only: true
+        same-site: lax
+        secure: ${SESSION_COOKIE_SECURE:false}
   error:
     include-message: never
     include-stacktrace: never
@@ -42,7 +50,10 @@ management:
       show-details: never
 
 springdoc:
+  api-docs:
+    enabled: ${API_DOCS_ENABLED:true}
   swagger-ui:
+    enabled: ${API_DOCS_ENABLED:true}
     path: /swagger-ui.html
 
 ams:
