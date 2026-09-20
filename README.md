@@ -88,4 +88,4 @@ E2E cần Java 21, Docker và cổng `3000`, `8080` trống. Playwright tự kh�
 - Không tự merge, rebase `main`, force push hoặc xóa branch review.
 - Tất cả commit message viết bằng tiếng Việt, ngắn gọn và phản ánh đúng thay đổi.
 
-Xem thêm tại [tài liệu dự án](docs/project-overview.md), [mô hình dữ liệu học vụ](docs/database-model.md) và [hướng dẫn môi trường](docs/development-setup.md).
+Xem thêm tại [tài liệu dự án](docs/project-overview.md), [mô hình dữ liệu học vụ](docs/database-model.md), [kết quả khảo sát kết nối Phenikaa](docs/phenikaa-integration.md) và [hướng dẫn môi trường](docs/development-setup.md).
