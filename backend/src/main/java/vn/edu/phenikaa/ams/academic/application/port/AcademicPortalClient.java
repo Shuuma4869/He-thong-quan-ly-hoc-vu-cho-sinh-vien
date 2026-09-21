@@ -1,11 +1,18 @@
 package vn.edu.phenikaa.ams.academic.application.port;
 
 import java.util.UUID;
-import vn.edu.phenikaa.ams.academic.domain.AcademicSnapshot;
+import java.util.Objects;
+import java.time.LocalDate;
 
 public interface AcademicPortalClient {
 
-    AcademicSnapshot fetchSnapshot(StudentConnectionId connectionId);
+    StudentConnectionId currentConnection(UUID currentUserId);
 
-    record StudentConnectionId(UUID value) {}
+    ProfileObservation fetchProfile(UUID currentUserId, StudentConnectionId connectionId);
+
+    ScheduleObservation fetchSchedule(UUID currentUserId, StudentConnectionId connectionId, LocalDate from, LocalDate through);
+
+    record StudentConnectionId(UUID value) {
+        public StudentConnectionId { Objects.requireNonNull(value); }
+    }
 }

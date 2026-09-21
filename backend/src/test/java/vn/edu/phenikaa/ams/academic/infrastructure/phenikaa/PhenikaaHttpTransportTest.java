@@ -38,7 +38,7 @@ class PhenikaaHttpTransportTest {
     private final ExecutorService executor = Executors.newVirtualThreadPerTaskExecutor();
     private HttpServer server;
     private PhenikaaHttpTransport transport;
-    private PhenikaaAcademicPortalClient client;
+    private PhenikaaHttpClient client;
     private volatile HttpHandler handler;
 
     @BeforeEach
@@ -58,7 +58,7 @@ class PhenikaaHttpTransportTest {
     private void configure(Duration timeout, int maxBytes) {
         if (transport != null) transport.close();
         transport = new PhenikaaHttpTransport(address(), Duration.ofSeconds(1), timeout, maxBytes);
-        client = new PhenikaaAcademicPortalClient(transport, codec);
+        client = new PhenikaaHttpClient(transport, codec);
     }
 
     @AfterEach
@@ -236,11 +236,10 @@ class PhenikaaHttpTransportTest {
     }
 
     @Test
-    void emptyResultsAreNotDeclaredCompleteAndOtherCapabilitiesStayUnsupported() {
+    void emptyResultsAreNotDeclaredCompleteAndDateRangeIsBounded() {
         handler = exchange -> reply(exchange, 200, envelope("[]"));
         assertThat(fetch().entries()).isEmpty();
         assertThat(fetch().completeness()).isEqualTo(ScheduleObservation.Completeness.UNKNOWN);
-        assertThatThrownBy(() -> client.fetchSnapshot(null)).isInstanceOf(UnsupportedOperationException.class);
         assertThatThrownBy(() -> client.fetchSchedule(session, DAY, DAY.plusDays(31))).isInstanceOf(IllegalArgumentException.class);
         assertThatThrownBy(() -> client.fetchSchedule(session, DAY, DAY.minusDays(1))).isInstanceOf(IllegalArgumentException.class);
     }

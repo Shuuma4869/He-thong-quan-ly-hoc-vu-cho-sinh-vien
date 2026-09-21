@@ -1,89 +1,114 @@
 package vn.edu.phenikaa.ams.academic.infrastructure.phenikaa;
 
+import java.time.Instant;
 import java.time.LocalDate;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.LinkedHashMap;
-import java.util.Locale;
-import java.util.Objects;
-import tools.jackson.core.JacksonException;
-import tools.jackson.core.StreamReadConstraints;
-import tools.jackson.core.StreamReadFeature;
-import tools.jackson.core.json.JsonFactory;
-import tools.jackson.databind.DeserializationFeature;
-import tools.jackson.databind.JsonNode;
-import tools.jackson.databind.json.JsonMapper;
-import vn.edu.phenikaa.ams.academic.application.port.AcademicPortalClient;
-import vn.edu.phenikaa.ams.academic.application.port.ScheduleObservation;
-import vn.edu.phenikaa.ams.academic.domain.AcademicSnapshot;
-import static vn.edu.phenikaa.ams.academic.infrastructure.phenikaa.PhenikaaClientException.Code.*;
+import java.util.UUID;
+import java.util.function.Function;
+import org.springframework.transaction.annotation.Transactional;
+import vn.edu.phenikaa.ams.academic.application.port.*;
+import vn.edu.phenikaa.ams.user.domain.AppUser;
+import vn.edu.phenikaa.ams.user.infrastructure.UserRepository;
+import static vn.edu.phenikaa.ams.academic.application.port.AcademicPortalException.Code.*;
 
-public final class PhenikaaAcademicPortalClient implements AcademicPortalClient {
+@Transactional(noRollbackFor = AcademicPortalException.class)
+public class PhenikaaAcademicPortalClient implements AcademicPortalClient {
+    private final PhenikaaConnectionRepository connections;
+    private final UserRepository users;
+    private final PhenikaaSessionCipher cipher;
+    private final PhenikaaHttpClient http;
 
-    private static final String ACTION = "SV_ThongTin_MH/DSA4BRINKCIpAiAPKSAv";
-    private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("dd/MM/uuuu", Locale.ROOT);
-    private static final ZoneId PORTAL_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
-    private final PhenikaaHttpTransport transport;
-    private final PhenikaaPayloadCodec codec;
-    private final JsonMapper json = JsonMapper.builder(JsonFactory.builder()
-            .streamReadConstraints(StreamReadConstraints.builder().maxNestingDepth(32).maxStringLength(4 * 1024 * 1024).build())
-            .disable(StreamReadFeature.INCLUDE_SOURCE_IN_LOCATION).enable(StreamReadFeature.STRICT_DUPLICATE_DETECTION).build())
-            .enable(DeserializationFeature.FAIL_ON_TRAILING_TOKENS, DeserializationFeature.USE_BIG_DECIMAL_FOR_FLOATS).build();
-
-    public PhenikaaAcademicPortalClient(PhenikaaHttpTransport transport, PhenikaaPayloadCodec codec) {
-        this.transport = Objects.requireNonNull(transport);
-        this.codec = Objects.requireNonNull(codec);
+    public PhenikaaAcademicPortalClient(PhenikaaConnectionRepository connections, UserRepository users,
+                                       PhenikaaSessionCipher cipher, PhenikaaHttpClient http) {
+        this.connections = connections;
+        this.users = users;
+        this.cipher = cipher;
+        this.http = http;
     }
 
-    public ScheduleObservation fetchSchedule(PhenikaaSession session, LocalDate from, LocalDate through) {
-        Objects.requireNonNull(session);
-        Objects.requireNonNull(from);
-        Objects.requireNonNull(through);
-        if (through.isBefore(from) || through.isAfter(from.plusDays(30)))
-            throw new IllegalArgumentException("Schedule range must contain 1 to 31 days");
-        var parameters = new LinkedHashMap<String, Object>();
-        parameters.put("action", ACTION);
-        parameters.put("func", "pkg_congthongtin_hssv_thongtin.LayDSLichCaNhan");
-        parameters.put("iM", session.responseKey());
-        parameters.put("strQLSV_NguoiHoc_Id", session.learnerId());
-        parameters.put("strNgayBatDau", from.format(DATE));
-        parameters.put("strNgayKetThuc", through.format(DATE));
-        parameters.put("strChucNang_Id", session.functionId());
-        parameters.put("strNguoiThucHien_Id", session.learnerId());
-        byte[] response = null;
-        try {
-            String encoded = codec.encodeRequest(json.writeValueAsString(parameters), ACTION.substring(ACTION.indexOf('/') + 1));
-            response = transport.readSchedule(session, encoded);
-            var envelope = PhenikaaEnvelope.from(json.readTree(response));
-            if (!envelope.success()) throw new PhenikaaClientException(BUSINESS_FAILURE);
-            JsonNode data;
+    /** Trusted local provisioning only; not exposed by a credential-submission endpoint. */
+    public StudentConnectionId connect(UUID currentUserId, PhenikaaSessionMaterial material) {
+        lockActiveUser(currentUserId);
+        var existing = connections.findByUserId(currentUserId);
+        UUID id = existing.map(PhenikaaConnection::id).orElseGet(UUID::randomUUID);
+        if (existing.isPresent()) {
+            var connection = existing.orElseThrow();
+            boolean matches;
             try {
-                data = json.readTree(codec.decodeResponse(envelope.encodedData(), session.responseKey()));
-            } catch (JacksonException ex) {
-                throw new PhenikaaClientException(DECODE_ERROR);
-            }
-            if (data == null || !data.isArray()) throw new PhenikaaClientException(UNEXPECTED_SCHEMA);
-            if (data.size() > 10000) throw new PhenikaaClientException(RESPONSE_TOO_LARGE);
-            var entries = new ArrayList<ScheduleObservation.Entry>();
-            for (var item : data) {
-                var entry = PhenikaaScheduleItem.from(item).normalize();
-                if (entry.date().isBefore(from) || entry.date().isAfter(through)) throw new PhenikaaClientException(UNEXPECTED_SCHEMA);
-                entries.add(entry);
-            }
-            return new ScheduleObservation(from, through, PORTAL_ZONE, entries);
-        } catch (JacksonException ex) {
-            throw new PhenikaaClientException(UNEXPECTED_SCHEMA);
-        } finally {
-            parameters.clear();
-            if (response != null) Arrays.fill(response, (byte) 0);
+                matches = cipher.matchesSubject(connection.encryptedSubject(), connection.keyVersion(), material, id, currentUserId);
+            } catch (IllegalStateException ex) { throw new AcademicPortalException(SESSION_INTEGRITY_FAILURE); }
+            if (!matches) throw new AcademicPortalException(SOURCE_ACCOUNT_MISMATCH);
+        }
+        try { http.fetchProfile(material.profile()); }
+        catch (PhenikaaClientException ex) {
+            var failure = translate(ex);
+            existing.ifPresent(connection -> connection.failed(failure.code(), Instant.now()));
+            throw failure;
+        }
+        byte[] encrypted = cipher.encrypt(material, id, currentUserId);
+        byte[] subject = cipher.encryptSubject(material, id, currentUserId);
+        Instant now = Instant.now();
+        if (existing.isPresent()) existing.orElseThrow().reconnect(encrypted, subject, cipher.keyVersion(), now);
+        else connections.save(new PhenikaaConnection(id, currentUserId, encrypted, subject, cipher.keyVersion(), now));
+        return new StudentConnectionId(id);
+    }
+
+    @Override public StudentConnectionId currentConnection(UUID currentUserId) {
+        lockActiveUser(currentUserId);
+        var connection = connections.findByUserId(currentUserId)
+                .orElseThrow(() -> new AcademicPortalException(CONNECTION_UNAVAILABLE));
+        return new StudentConnectionId(connection.id());
+    }
+
+    @Override public ProfileObservation fetchProfile(UUID currentUserId, StudentConnectionId connectionId) {
+        return access(currentUserId, connectionId, material -> http.fetchProfile(material.profile()));
+    }
+
+    @Override public ScheduleObservation fetchSchedule(UUID currentUserId, StudentConnectionId connectionId,
+                                                       LocalDate from, LocalDate through) {
+        return access(currentUserId, connectionId, material -> http.fetchSchedule(material.schedule(), from, through));
+    }
+
+    private <T> T access(UUID userId, StudentConnectionId id, Function<PhenikaaSessionMaterial, T> operation) {
+        lockActiveUser(userId);
+        var connection = connections.findByIdAndUserId(id.value(), userId)
+                .orElseThrow(() -> new AcademicPortalException(CONNECTION_UNAVAILABLE));
+        if (connection.status() != PhenikaaConnection.Status.CONNECTED)
+            throw new AcademicPortalException(CONNECTION_UNAVAILABLE);
+        PhenikaaSessionMaterial decrypted;
+        try { decrypted = cipher.decrypt(connection.encryptedSession(), connection.keyVersion(), id.value(), userId); }
+        catch (IllegalStateException ex) {
+            connection.failed(SESSION_INTEGRITY_FAILURE, Instant.now());
+            throw new AcademicPortalException(SESSION_INTEGRITY_FAILURE);
+        }
+        try (decrypted) {
+            T result = operation.apply(decrypted);
+            connection.successful(Instant.now());
+            return result;
+        } catch (PhenikaaClientException ex) {
+            var failure = translate(ex);
+            connection.failed(failure.code(), Instant.now());
+            throw failure;
         }
     }
 
-    @Override
-    public AcademicSnapshot fetchSnapshot(StudentConnectionId connectionId) {
-        throw new UnsupportedOperationException(
-                "Composite academic snapshots are not implemented; only schedule observations are supported");
+    public void disconnect(UUID currentUserId) {
+        lockActiveUser(currentUserId);
+        connections.findByUserId(currentUserId).ifPresent(connection -> connection.disconnect(Instant.now()));
+    }
+
+    public PhenikaaConnection.ConnectionView status(UUID currentUserId) {
+        lockActiveUser(currentUserId);
+        return connections.findByUserId(currentUserId).map(PhenikaaConnection::view)
+                .orElseGet(() -> new PhenikaaConnection.ConnectionView(PhenikaaConnection.Status.DISCONNECTED,
+                        null, null, null, null, false));
+    }
+
+    private void lockActiveUser(UUID userId) {
+        var user = users.lockById(userId).orElseThrow(() -> new AcademicPortalException(CONNECTION_UNAVAILABLE));
+        if (user.getAccountStatus() != AppUser.Status.ACTIVE) throw new AcademicPortalException(CONNECTION_UNAVAILABLE);
+    }
+
+    private static AcademicPortalException translate(PhenikaaClientException ex) {
+        return new AcademicPortalException(AcademicPortalException.Code.valueOf(ex.code().name()));
     }
 }

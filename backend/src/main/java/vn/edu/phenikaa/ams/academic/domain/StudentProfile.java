@@ -35,6 +35,12 @@ public class StudentProfile {
         AcademicValues.sameProfile(id, curriculum);
         curriculumId = curriculum.getId();
     }
+    public void updateSourceProfile(String studentNumber, String programName) {
+        String number = AcademicValues.optionalText(studentNumber, 80);
+        String program = AcademicValues.optionalText(programName, 200);
+        if (number != null) this.studentNumber = number;
+        if (program != null) this.programName = program;
+    }
     public void selectGradingPolicy(GradingPolicy policy) {
         AcademicValues.sameProfile(id, policy);
         gradingPolicyId = policy.getId();

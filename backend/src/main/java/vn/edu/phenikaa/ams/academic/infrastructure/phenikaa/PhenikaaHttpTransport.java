@@ -15,6 +15,7 @@ import static vn.edu.phenikaa.ams.academic.infrastructure.phenikaa.PhenikaaClien
 public final class PhenikaaHttpTransport implements AutoCloseable {
     static final URI PORTAL = URI.create("https://qldtbeta.phenikaa-uni.edu.vn");
     static final String SCHEDULE_PATH = "/sinhvienapi3/api/SV_ThongTin_MH/DSA4BRINKCIpAiAPKSAv";
+    static final String PROFILE_PATH = "/sinhvienapi3/api/SV_Custom/DSA4FSkuLyYVKC8CKSgVKCQ1CS4SLgPP";
     private final HttpClient client;
     private final URI baseUri;
     private final Duration responseTimeout;
@@ -48,8 +49,16 @@ public final class PhenikaaHttpTransport implements AutoCloseable {
     }
 
     byte[] readSchedule(PhenikaaSession session, String encodedRequest) {
+        return read(session, encodedRequest, SCHEDULE_PATH);
+    }
+
+    byte[] readProfile(PhenikaaSession session, String encodedRequest) {
+        return read(session, encodedRequest, PROFILE_PATH);
+    }
+
+    private byte[] read(PhenikaaSession session, String encodedRequest, String path) {
         if (encodedRequest == null || encodedRequest.length() > maxBytes) throw new PhenikaaClientException(RESPONSE_TOO_LARGE);
-        var request = HttpRequest.newBuilder(baseUri.resolve(SCHEDULE_PATH)).timeout(responseTimeout)
+        var request = HttpRequest.newBuilder(baseUri.resolve(path)).timeout(responseTimeout)
                 .header("Accept", "application/json").header("Accept-Encoding", "identity")
                 .header("Content-Type", "application/x-www-form-urlencoded; charset=UTF-8")
                 .header("Origin", PORTAL.toString()).header("Referer", PORTAL + "/conggiangvien/index.aspx")

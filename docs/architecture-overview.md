@@ -20,10 +20,10 @@ EmailNotificationGateway ---- Email provider
 
 ## Ranh giới tích hợp
 
-- `AcademicPortalClient` trả về snapshot đã chuẩn hóa. Business module không phụ thuộc HTML hoặc request riêng của Phenikaa.
+- `AcademicPortalClient` đọc theo capability: hồ sơ hoặc lịch, thay vì ép các API nguồn vào một snapshot lớn. Application truyền UUID user hiện tại và connection ID; không truyền phiên Phenikaa. Kết quả đã chuẩn hóa, không chứa parser hoặc tên trường nguồn.
 - `CalendarGateway` định nghĩa thao tác qua external ID; implementation sau này phải kiểm tra ownership và metadata trước khi sửa/xóa event.
 - `EmailNotificationGateway` bắt buộc idempotency key.
-- Session/token nhạy cảm sẽ được mã hóa at rest; contract hiện dùng connection ID thay vì truyền token qua business layer.
+- Phiên Phenikaa được mã hóa AES-256-GCM khi lưu. Adapter kiểm tra ownership, giải mã trong phạm vi một lần gọi và đóng dữ liệu sau đó. Tính năng mặc định tắt, không có khóa mặc định hoặc API nhận token.
 
 ## Tài khoản và session hiện tại
 
@@ -41,4 +41,12 @@ Domain học vụ nằm trong `academic.domain`, change nằm trong `sync.domain
 
 V3–V5 bổ sung persistence cho học vụ, grading policy, snapshot metadata và schedule change; Hibernate chỉ validate schema. Môn học, lớp mở theo học kỳ, buổi học và kỳ thi là các entity riêng. Buổi học giữ occurrence key không phụ thuộc giờ/phòng, có optimistic locking khi cập nhật. [ERD và các quyết định database](database-model.md) mô tả quan hệ, nullability và giới hạn.
 
-Snapshot DTO hiện là contract chuẩn hóa; metadata và change có thể lưu/đọc qua JPA nhưng chưa có use case import, repository học vụ, API CRUD hoặc engine phát hiện thay đổi. `DetectedAcademicChange` dùng entity UUID thay cho ID từ nguồn. Snapshot/change bất biến ở mapping Hibernate; payload snapshot đầy đủ và việc tính diff/hash chưa triển khai. Ở phase đồng bộ, engine mới đối soát nguồn và tạo change record như `ROOM_CHANGED` hoặc `EXAM_TIME_CHANGED` để các consumer xử lý.
+Snapshot DTO vẫn là model chuẩn hóa; metadata và change có thể lưu/đọc qua JPA nhưng chưa có engine tạo snapshot hoặc phát hiện thay đổi. `DetectedAcademicChange` dùng entity UUID thay cho ID từ nguồn. Snapshot/change bất biến ở mapping Hibernate; payload snapshot đầy đủ và việc tính diff/hash chưa triển khai. Ở phase đồng bộ, engine mới đối soát nguồn và tạo change record như `ROOM_CHANGED` hoặc `EXAM_TIME_CHANGED` để các consumer xử lý.
+
+## Nhập hồ sơ trong Phase 4B
+
+`ProfileImportService` lấy kết nối của user hiện tại, đọc hồ sơ rồi tạo/cập nhật `StudentProfile`. Chỉ thêm repository cho hai use case đang có: kết nối Phenikaa và hồ sơ sinh viên. Không tạo controller CRUD cho toàn bộ domain.
+
+`PhenikaaAcademicPortalClient` khóa hàng user trong transaction để các lượt nhập của cùng tài khoản không ghi đè nhau hoặc cùng tạo hồ sơ lần đầu. HTTP có timeout và giới hạn response. Chỉ khi nguồn được đọc/kiểm tra đầy đủ mới ghi hồ sơ; lỗi nguồn giữ dữ liệu cũ và lưu mã lỗi an toàn, lỗi ghi database rollback transaction. Chi tiết ràng buộc nguồn, ngắt/kết nối lại và giới hạn giữ khóa trong lúc gọi HTTP nằm trong [tài liệu kết nối](phenikaa-integration.md#phase-4b-kết-nối-mã-hóa-và-nhập-hồ-sơ).
+
+Phiên được cấp qua thao tác nội bộ có kiểm soát, chưa phải production connect flow. API duy nhất thêm cho frontend là đọc trạng thái kết nối khi bật tính năng. Lịch chưa được lưu vì chưa xác minh đủ quan hệ lớp–môn–học kỳ; không có source mapping giả, scheduler hoặc change detection.

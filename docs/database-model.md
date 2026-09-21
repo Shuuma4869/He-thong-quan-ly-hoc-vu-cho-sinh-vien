@@ -1,8 +1,8 @@
 # Domain và database học vụ
 
-## Phạm vi Phase 2
+## Phạm vi hiện tại
 
-Đã có JPA model, migration và kiểm thử PostgreSQL cho dữ liệu học vụ chuẩn hóa. Chưa có import, connector, API học vụ, bộ tính GPA hoặc change detection engine. `AcademicPortalClient` vẫn chỉ là contract; adapter Phenikaa chưa kết nối.
+Phase 2 đã tạo model học vụ chuẩn hóa. Phase 4B thêm kết nối Phenikaa mã hóa và use case nhập hồ sơ; lịch mới được đọc thành observation, chưa được lưu vì thiếu liên kết nguồn đáng tin cậy. Chưa có API CRUD học vụ, bộ tính GPA hoặc change detection engine.
 
 ## Ownership và persistence
 
@@ -12,13 +12,14 @@ Catalog, học kỳ, chương trình và chính sách điểm hiện là bản d
 
 Mọi entity học vụ có UUID nội bộ. Các quan hệ dùng UUID trong JPA và khóa ngoại trong PostgreSQL; không dựng graph `ManyToMany` hoặc cascade xóa cả hồ sơ. Khóa ngoại ghép `(profile_id, parent_id)` buộc cha/con cùng hồ sơ. `grading_classification` nhận ownership thông qua policy. Các quan hệ thêm điều kiện môn/học kỳ/chương trình cũng được kiểm tra ở database.
 
-Chưa thêm repository/application service mới: chưa có use case đọc/ghi học vụ từ ứng dụng. Integration test dùng EntityManager để kiểm tra mapping và truy vấn identity. Khi triển khai import, cần lưu cha trước con trong transaction vì JPA đang giữ ID thay vì association tự sắp xếp insert. Chọn curriculum/policy cho hồ sơ sau khi đã lưu các bản ghi đó. FK mặc định ngăn xóa cha còn được tham chiếu, không âm thầm mất lịch sử.
+Phase 4B thêm repository cho kết nối và hồ sơ, cùng application service nhập hồ sơ theo user. Các domain còn lại chưa có repository/CRUD khi chưa có use case. Integration test dùng EntityManager để kiểm tra mapping và truy vấn identity. Khi triển khai import quan hệ cha/con, cần lưu cha trước con trong transaction vì JPA đang giữ ID thay vì association tự sắp xếp insert. Chọn curriculum/policy cho hồ sơ sau khi đã lưu các bản ghi đó. FK mặc định ngăn xóa cha còn được tham chiếu, không âm thầm mất lịch sử.
 
 ## Quan hệ chính
 
 ```mermaid
 erDiagram
     app_user ||--o| student_profile : owns
+    app_user ||--o| phenikaa_connection : owns
     student_profile ||--o{ semester : has
     student_profile ||--o{ course : has
     student_profile ||--o{ curriculum : has
@@ -64,7 +65,7 @@ Khi đối chiếu lại dữ liệu, tìm theo bộ khóa trên rồi gọi `re
 
 `Exam` tách khỏi ClassSession, gắn với StudentCourse vì nhóm thi có thể khác lớp học. Unique `(profile_id, student_course_id, occurrence_key)` cho phép nhiều bài thi/lần thi trong cùng lần học. Lịch thi cũng có version và identity không đổi khi đổi giờ/phòng.
 
-Schema không tự giải quyết bài toán nguồn thiếu identity. Connector sau này phải duy trì mapping hoặc đối soát có kiểm soát; không được lấy hash của giờ/phòng rồi gọi đó là khóa ổn định. Hiện chưa có thuật toán đối soát, bảng source mapping hay kết nối nguồn.
+Schema không tự giải quyết bài toán nguồn thiếu identity. Connector phải duy trì mapping hoặc đối soát có kiểm soát; không được lấy hash của giờ/phòng rồi gọi đó là khóa ổn định. Hiện đã đọc được lịch nguồn qua HTTP nhưng chưa có thuật toán đối soát, bảng source mapping hoặc import lịch.
 
 ## Chương trình và điều kiện học
 
@@ -111,5 +112,28 @@ Unique index phục vụ cả chống trùng và tra cứu theo owner/identity. 
 - V3: hồ sơ, catalog, curriculum/prerequisite, grading policy/classification.
 - V4: lớp mở, lần học, kết quả, buổi học và kỳ thi.
 - V5: snapshot metadata và schedule change.
+- V6: kết nối Phenikaa mã hóa, ownership và trạng thái truy cập.
 
 V1/V2 giữ nguyên; `ddl-auto=validate` giữ nguyên. Migration không seed học vụ hoặc sao chép dữ liệu cá nhân. Kiểm thử bao gồm database sạch, nâng cấp V2 → V5 giữ nguyên account/settings, chạy lại không tạo migration trùng, mapping tất cả entity, JSONB/decimal/time, constraint/ownership và optimistic locking. Test dùng dữ liệu tổng hợp `@example.test`, không dùng tài khoản trường.
+
+## Kết nối Phenikaa và nhập hồ sơ
+
+`phenikaa_connection` có UUID nội bộ, `user_id` bắt buộc/unique và FK tới `app_user`. Một user có một hàng kết nối kể cả khi đã ngắt; kết nối lại giữ UUID cũ. Unique index đủ phục vụ tra cứu theo user, không thêm index trùng mục đích. FK không cascade xóa dữ liệu học vụ.
+
+| Cột/nhóm | Quy tắc và lý do |
+| --- | --- |
+| `status` | Chỉ nhận CONNECTED, RECONNECTION_REQUIRED, DISCONNECTED |
+| `encrypted_session` | BYTEA chứa nonce/ciphertext/tag; bắt buộc khi kết nối hoặc cần kết nối lại, phải NULL khi đã ngắt |
+| `encrypted_subject` | BYTEA chứa ID người học đã mã hóa, bắt buộc để ngăn kết nối lại bằng tài khoản nguồn khác rồi ghi đè hồ sơ |
+| `encryption_key_version` | Số nguyên dương; cùng với phiên bản format và AAD để giải mã đúng ngữ cảnh |
+| `session_expires_at` | Nullable vì expiry chưa xác minh; hiện lưu NULL, không đặt hạn giả |
+| `last_authenticated_at` | Bắt buộc; chỉ ghi sau khi cấp phiên và kiểm tra hồ sơ thành công |
+| `last_successful_access_at` | Lần truy cập thành công gần nhất |
+| `last_failed_access_at`, `last_failure_code` | Cùng có hoặc cùng NULL; mã lỗi thuộc danh sách cố định, không có message nguồn |
+| `created_at`, `updated_at`, `version` | Timestamp bắt buộc; version phát hiện ghi đè bằng entity cũ |
+
+Hai cột mã hóa dùng AAD có mục đích riêng và ràng buộc user/kết nối; không thể hoán đổi session với subject hoặc chuyển ciphertext sang user khác để sử dụng. Khóa nằm ngoài database/source. [Tài liệu kết nối](phenikaa-integration.md#phase-4b-kết-nối-mã-hóa-và-nhập-hồ-sơ) giải thích định dạng, cấu hình và giới hạn xoay khóa hiện tại.
+
+`StudentProfile` không thêm cột ở phase này. Lượt nhập dùng `user_id` từ kết nối đã kiểm tra, tạo hồ sơ nếu chưa có và giữ UUID khi nhập lại. Hiện chỉ cập nhật mã sinh viên/tên ngành đã xác minh; giá trị nguồn chưa biết không xóa trường cũ. User được khóa trong transaction để nhập lần đầu đồng thời không tạo trùng.
+
+Test V5 → V6 kiểm tra hồ sơ cũ còn nguyên và không sinh seed kết nối. Testcontainers cũng chạy schema sạch với Hibernate validate, constraint owner/unique/ciphertext, nhập lặp/đồng thời, hết phiên, lỗi nguồn, lỗi toàn vẹn và rollback khi ghi thất bại. Chưa có migration source mapping hoặc schedule import vì gate quan hệ nguồn chưa đạt.
