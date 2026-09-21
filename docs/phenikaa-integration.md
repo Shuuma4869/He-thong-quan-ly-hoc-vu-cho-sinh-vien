@@ -1,5 +1,7 @@
 # Kết nối AMS với cổng QLĐT Phenikaa
 
+> Phần khảo sát Phase 3 bên dưới được giữ nguyên theo thời điểm kiểm tra. Kết quả mới ngày 21/09/2026 nằm ở [Phase 4A: kiểm chứng HTTP và giao thức A/B](#phase-4a-kiểm-chứng-http-và-giao-thức-ab): Java đã đọc được lịch qua API nội bộ, nhưng chưa có chức năng nhập dữ liệu vào AMS.
+
 Tài liệu này ghi lại những gì đã kiểm tra trên cổng QLĐT Phenikaa trong ngày 18–20/09/2026 và những việc cần làm rõ trước khi viết phần kết nối cho AMS. Người tiếp tục phát triển có thể đọc phần đầu để hiểu hướng xử lý, rồi tra đường dẫn API và tên trường ở các phụ lục.
 
 Phạm vi hiện tại là khảo sát, chưa triển khai nhập dữ liệu vào AMS. `PhenikaaAcademicPortalClient` vẫn chưa có phần gọi HTTP; chương trình chưa tự đồng bộ hồ sơ, lịch hoặc điểm từ trường.
@@ -419,3 +421,129 @@ Các tên dưới đây hữu ích để tìm đúng chỗ xử lý, nhưng cầ
 | Chính sách điểm | `THANGDIEM_MA`, `THUOCTINHLANTINH` | Chưa có quy chế/phiên bản nguồn được xác nhận |
 
 Riêng `LAMONTINHDIEMTHEOCHUONGTRINH` đã thấy có kiểu số trong dữ liệu chương trình sau xử lý. Điều đó chưa đủ để tự đặt `includedInGpa=true`: còn cần biết ý nghĩa giá trị và chính sách áp dụng. Tương tự, tên giống nhau giữa hai API chưa bảo đảm chúng dùng cùng phạm vi hoặc cùng loại ID.
+
+## Phase 4A: kiểm chứng HTTP và giao thức A/B
+
+### Kết quả và phạm vi
+
+Ngày 21/09/2026, đã dùng HTTP client Java đọc lịch cá nhân từ API nội bộ Phenikaa bằng phiên do chủ tài khoản tự đăng nhập. Java tự tạo request, đọc phản hồi, giải mã `Data.B` và chuyển từng bản ghi sang model có kiểu. Không lấy nội dung lịch từ DOM, tức là không đọc các ô đang hiển thị trên trang web để thay cho việc gọi API.
+
+Đây là nền kết nối, chưa phải chức năng đồng bộ hoàn chỉnh. Chưa có màn hình kết nối tài khoản Phenikaa trong AMS, chưa lưu phiên hoặc lịch vào database, chưa chạy định kỳ và chưa phát hiện thay đổi. Hồ sơ, API thi riêng, điểm và chương trình đào tạo chưa được triển khai trong phase này.
+
+Các mức xác nhận dùng trong phần này:
+
+- **VERIFIED — đã kiểm chứng:** có lần chạy thực tế hoặc test cụ thể; giới hạn của lần kiểm tra được ghi kèm.
+- **OBSERVED — đã quan sát:** thấy trong mã hoặc mẫu phản hồi, chưa xem là quy tắc cho mọi tài khoản.
+- **UNKNOWN — chưa rõ:** thiếu bằng chứng để kết luận. Viết xong code không làm một điểm chưa rõ trở thành đã kiểm chứng.
+- **PROPOSED — đề xuất:** phương án cho bước sau, chưa phải hành vi đang có trong ứng dụng.
+
+### AE và AD thực sự làm gì?
+
+**VERIFIED:** hai hàm dùng XOR trên từng đơn vị ký tự UTF-16, kết hợp UTF-8 và Base64. Không thấy bước nén hoặc AES trong hai hàm này.
+
+```text
+AE: chuỗi JSON → XOR với khóa lặp → byte UTF-8 → Base64
+AD: Base64 → byte UTF-8 → chuỗi → XOR với khóa lặp → chuỗi JSON
+```
+
+XOR là phép toán trên các bit; dùng lại cùng khóa sẽ đảo được phép biến đổi. “Khóa lặp” nghĩa là khi đọc hết khóa thì quay về ký tự đầu tiên. UTF-16 quan trọng vì JavaScript xử lý chuỗi theo đơn vị 16 bit: một emoji có thể chiếm hai đơn vị, không chỉ một. Java dùng cùng cách tính trong `PhenikaaPayloadCodec`, thay vì XOR trực tiếp các byte UTF-8.
+
+Base64 chỉ đổi cách biểu diễn dữ liệu thành chuỗi. Toàn bộ lớp A/B này là cách làm khó đọc dữ liệu trực tiếp, **không phải lớp mã hóa đủ để bảo vệ credential**. Vẫn cần HTTPS, bảo vệ bộ nhớ và không ghi payload vào log.
+
+**OBSERVED:** khóa gửi request lấy từ phần sau dấu `/` trong `action`. Với lịch cá nhân, đó là `DSA4BRINKCIpAiAPKSAv`, một phần đường dẫn công khai, không phải token. Khóa đọc phản hồi là tham số `iM`; mã portal lấy từ `edu.system.iM` rồi đưa vào request. **UNKNOWN:** chưa xác định đầy đủ nơi tạo giá trị `iM`, thời hạn và quan hệ của nó với phiên. Vì vậy, AMS nhận giá trị từ ngữ cảnh phiên đang có, không chép một giá trị thật vào source và không tự sinh giá trị thay thế.
+
+Codec được đối chiếu trong bộ nhớ với chính AE/AD của portal bằng dữ liệu giả, gồm tiếng Việt, emoji, mảng và `null`. Test chỉ lưu những vector giả này; không lưu chuỗi A/B từ tài khoản thật. Bộ đọc từ chối Base64 không hợp lệ, byte UTF-8 lỗi và dữ liệu vượt giới hạn. Nếu giải mã ra chuỗi không phải JSON hợp lệ, client báo `DECODE_ERROR`, không cố sửa chuỗi để đọc tiếp.
+
+### HTTP client và phiên được tách như thế nào?
+
+`PhenikaaHttpTransport` dùng HTTP client của Java 21. Constructor dùng trong ứng dụng chỉ cho phép host HTTPS cố định của portal; không có tham số URL do người dùng nhập. Constructor dành cho test chỉ mở thêm địa chỉ loopback `127.0.0.1`, để test offline không gọi ra Internet.
+
+Transport nhận giới hạn thời gian kết nối, thời gian nhận toàn bộ phản hồi và kích thước tối đa qua constructor. Lượt kiểm chứng dùng lần lượt 8 giây, 15 giây và 2 MiB. Đây là cấu hình của lượt thử, không phải SLA của portal. Giới hạn kích thước được kiểm tra ngay trong lúc nhận dữ liệu, kể cả khi máy chủ không khai báo trước độ dài; giới hạn thời gian vẫn áp dụng khi đã nhận header nhưng phần thân bị treo.
+
+Client không tự đi theo redirect và không chuyển credential sang địa chỉ khác. Nó không tự retry khi lỗi xác thực. Khoảng lịch mỗi lần gọi giới hạn từ 1 đến 31 ngày, tính cả hai đầu; chưa có thuật toán chia khoảng dài thành nhiều lần đọc.
+
+`PhenikaaSession` giữ Bearer, cookie tùy chọn, khóa đọc phản hồi và ngữ cảnh người học/chức năng riêng với dữ liệu lịch. Nó chỉ sống trong bộ nhớ, không phải entity, không được trả từ controller và không nằm trong snapshot. `close()` xóa các mảng ký tự mà đối tượng sở hữu. Cần hiểu giới hạn này: Java và thư viện HTTP vẫn có thể tạo bản sao chuỗi trong bộ nhớ; thao tác đó không bảo đảm xóa mọi bản sao khỏi JVM.
+
+Các lớp không ghi request/response vào log. `toString()` của session, envelope và model lịch chỉ trả nhãn đã che nội dung; exception chỉ chứa mã lỗi, không gắn lỗi gốc có thể mang payload. Transport từ chối khởi tạo nếu bật thuộc tính `jdk.httpclient.HttpClient.log`. Khi vận hành vẫn không được bật wire logging, dump heap hoặc công cụ chụp request cho phiên thật chỉ để chẩn đoán: chúng có thể đọc dữ liệu ngoài cơ chế che log của những lớp này.
+
+Chưa có cơ chế cấp một phiên Phenikaa cho user AMS. Mã người học hiện được lấy từ request của chính tài khoản đã đăng nhập, không phải từ tham số API công khai. **PROPOSED:** trước khi mở chức năng kết nối cho người dùng, cần ràng buộc tài khoản nguồn với user AMS phía server; không cho người dùng gửi mã người học tùy ý hoặc tái sử dụng phiên của người khác.
+
+### Lượt kiểm chứng độc lập và vật liệu xác thực cần thiết
+
+API duy nhất dùng để kiểm chứng Java là:
+
+```text
+POST /sinhvienapi3/api/SV_ThongTin_MH/DSA4BRINKCIpAiAPKSAv
+Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+Body: một trường A
+```
+
+Chủ tài khoản tự đăng nhập trong profile trình duyệt tạm ngoài repository. Công cụ local lấy đúng thông tin phiên của request lịch và bàn giao một lần cho Java qua loopback. Dữ liệu bàn giao được mã hóa và kiểm tra chữ ký; không truyền credential trên dòng lệnh, không ghi session ra file và không lưu raw response. Công cụ này chỉ phục vụ kiểm chứng, không phải endpoint hoặc dịch vụ mới của AMS. Sau lượt thử đã đóng trình duyệt, xóa profile/helper tạm và giải phóng phiên trong bộ nhớ. Việc xóa profile local không có nghĩa token đã bị thu hồi tại máy chủ Phenikaa.
+
+**VERIFIED trong mẫu tài khoản và khoảng ngày đã thử:**
+
+| Cách gọi | Kết quả |
+| --- | --- |
+| Bearer + cookie + Origin/Referer như request nguồn | Request thành công, nghiệp vụ thành công, giải mã và mapping thành công; có bản ghi |
+| Bỏ cookie, giữ các thành phần còn lại | Vẫn thành công đủ các bước trên |
+| Bỏ Bearer, giữ cookie và các thành phần còn lại | Bị từ chối xác thực; client trả `SESSION_EXPIRED`, yêu cầu kết nối lại |
+
+Từ đó, Bearer là **required** và cookie là **optional trong lượt đọc lịch đã thử**. Không suy rộng kết luận này sang đăng nhập, SSO hoặc API khác. Origin/Referer là **unknown** vì chưa thử bỏ riêng. Lượt Java không gửi header anti-CSRF riêng và vẫn thành công; bỏ toàn bộ cookie cũng thành công trong mẫu này. Điều đó không chứng minh các thao tác khác không cần CSRF, và không thay đổi bảo vệ CSRF của AMS.
+
+Đây là gọi server-to-server: CORS của trình duyệt không quyết định Java có đọc được phản hồi hay không. Không có bước bỏ qua CAPTCHA, MFA, chứng chỉ TLS hoặc quyền truy cập.
+
+Lượt đầu đọc đủ phản hồi nhưng mapper từ chối kiểu số. Kiểm tra cấu trúc trong bộ nhớ cho thấy portal gửi giờ/phút dưới dạng số thập phân có giá trị nguyên. Mapper đã sửa để nhận cả `7` và `7.0` — ví dụ giả định — nhưng từ chối `7.5`, chuỗi `"7"` và giá trị ngoài khoảng hợp lệ. Sau sửa, lượt chạy qua toàn bộ client thành công. Không thay test để bỏ qua lỗi production.
+
+### Phản hồi và lỗi được phân biệt ra sao?
+
+**VERIFIED:** phản hồi lịch thành công có `Success=true`, `Data.B` là chuỗi; sau AD, nội dung là một mảng JSON. Envelope có kiểu chỉ giữ thông tin cần đọc. `Message`, `Pager` và `Id` không được sao chép vào lỗi hoặc log; chưa dùng chúng để khẳng định độ đầy đủ.
+
+| Tình huống | Kết quả client |
+| --- | --- |
+| HTTP 2xx, `Success=true`, B hợp lệ và mapping được | Trả `ScheduleObservation` |
+| HTTP 200 nhưng `Success=false` | `BUSINESS_FAILURE` |
+| HTTP 401 hoặc redirect đúng trang login cùng origin | `SESSION_EXPIRED`; `reconnectionRequired=true` |
+| HTTP lỗi khác, kể cả 403, hoặc redirect khác | `HTTP_ERROR`; không tự chuyển sang host mới |
+| Thiếu/sai kiểu envelope, sai cấu trúc dữ liệu, ngày/giờ không hợp lệ | `UNEXPECTED_SCHEMA` |
+| Base64/UTF-8 lỗi hoặc chuỗi sau AD không phải JSON hợp lệ | `DECODE_ERROR` |
+| Không thiết lập/duy trì được kết nối | `NETWORK_ERROR` |
+| Quá thời gian hoặc kích thước đã cấu hình | `TIMEOUT` hoặc `RESPONSE_TOO_LARGE` |
+
+Không gọi mọi lỗi nghiệp vụ hoặc giải mã là “hết phiên”, vì làm vậy sẽ che lỗi protocol. **UNKNOWN:** chưa đợi token tự hết hạn, chưa kiểm chứng refresh hoặc dấu hiệu riêng của expiry trong HTTP 200. Test offline chứng minh nhánh xử lý 401/redirect hoạt động; nó không chứng minh mọi phiên hết hạn của portal đều trả đúng hai dạng đó. Tương tự, sai khóa XOR không có cơ chế kiểm tra toàn vẹn riêng: lỗi cú pháp hoặc schema giúp phát hiện nhiều trường hợp, không phải bằng chứng mật mã rằng khóa chắc chắn đúng.
+
+### DTO, mapper và thời gian
+
+`PhenikaaScheduleItem` nằm trong `academic.infrastructure.phenikaa`. Tên trường riêng của nguồn được đọc tại đây, không đưa vào entity học vụ. Kết quả chuẩn hóa là `ScheduleObservation`, gồm khoảng ngày đã yêu cầu, múi giờ và danh sách phần tử bất biến.
+
+| Trường nguồn được đọc | Trường chuẩn hóa | Giới hạn ý nghĩa |
+| --- | --- | --- |
+| `IDLICHHOC` | `identity.scheduleId` | Mã ứng viên, chưa phải khóa lưu trữ |
+| `IDLOPHOCPHAN` | `identity.sectionId` | Giữ riêng với mã đăng ký |
+| `DANGKY_LOPHOCPHAN_ID` | `identity.enrollmentSectionId` | Không mặc định bằng mã lớp |
+| `TENHOCPHAN` | `courseName` | Chưa suy ra mã môn hoặc Course UUID |
+| `NGAYHOC` | `date` | Đọc chặt `dd/MM/uuuu`, không dựa system locale |
+| Các trường giờ/phút bắt đầu, kết thúc | `startsAt`, `endsAt` | `LocalTime`, không coi là UTC |
+| `TENPHONGHOC`, `GIANGVIEN` | `room`, `lecturer` | Có thể thiếu; không tự điền dữ liệu |
+| `PHANLOAI` | `kind` | `LICHHOC` → CLASS, `LICHTHI` → EXAM, loại khác → UNKNOWN |
+
+**OBSERVED:** định dạng ngày trong dữ liệu đã giải mã là DD/MM/YYYY; giao diện nguồn hiển thị GMT+7. Model giữ ngày/giờ địa phương với `Asia/Ho_Chi_Minh` rõ ràng, chưa biến thành timestamp UTC hoặc suy lịch lặp. Ngày không hợp lệ hay ngoài khoảng đã yêu cầu bị từ chối. Một cặp giờ/phút có thể cùng thiếu; nếu chỉ có một nửa thì báo lỗi. Nếu có cả thời điểm bắt đầu và kết thúc, kết thúc phải sau bắt đầu trong cùng ngày. Lịch qua nửa đêm chưa được hỗ trợ, không tự cộng một ngày.
+
+Đọc được một item mang loại EXAM trong lịch cá nhân không có nghĩa đã triển khai API thi riêng. Chưa tạo entity `Exam`, `StudentCourse` hoặc `ClassSession` từ dữ liệu này. Một lần gọi thiếu hoặc sai một item sẽ thất bại cả lần đọc, không âm thầm bỏ item đó rồi báo đủ lịch.
+
+### Identity, độ đầy đủ và contract hiện tại
+
+Không có bằng chứng mới rằng `IDLICHHOC` giữ nguyên khi đổi phòng/giờ, duy nhất giữa các tài khoản hoặc đại diện đúng một buổi. Kết quả qua reload của Phase 3 vẫn chỉ là mã ứng viên. `CandidateIdentity.scope()` luôn trả `UNVERIFIED`; không dùng `ID` biến động, thời gian, phòng hoặc hash các trường này làm khóa.
+
+`ScheduleObservation.completeness()` luôn trả `UNKNOWN`, kể cả danh sách có bản ghi hoặc rỗng. Điều này buộc phần nhập dữ liệu sau này phải xác minh phạm vi/phân trang trước khi đánh dấu buổi cũ đã bị hủy. Không tạo bảng source mapping khi phạm vi ID chưa rõ; đề xuất đối chiếu AMS UUID với nguồn/tài khoản/loại đối tượng vẫn chờ review ở bước sau.
+
+`AcademicPortalClient.fetchSnapshot(connectionId)` chưa đổi contract và vẫn báo chưa hỗ trợ. Adapter thêm thao tác thực tế `fetchSchedule(session, from, through)`, không trả snapshot rỗng để giả lập hoàn thành. Chưa đưa tham số phiên riêng của Phenikaa lên interface dùng chung khi AMS chưa có connection store hoặc application service quản lý ownership. Khi có use case nhập lịch thật, mới chốt contract theo từng khả năng và cách tra phiên qua connection ID.
+
+### Test, giới hạn và cách tiếp tục
+
+Các test mới chạy offline với HTTP server trên loopback, chỉ dùng dữ liệu giả. Chúng kiểm tra vector codec, envelope, HTTP 200 nhưng nghiệp vụ thất bại, dữ liệu hỏng, timeout trước header và giữa phần thân, response quá lớn, redirect không chuyển credential, 401, lỗi mạng, che thông tin chẩn đoán, mapping ngày/giờ và giới hạn identity/độ đầy đủ. Không cần tài khoản Phenikaa trong CI và không thêm secret cho workflow.
+
+Lượt local `mvnw.cmd test` chạy 60 test, không lỗi hoặc bỏ qua. `mvnw.cmd verify` đã được chạy nhưng thất bại ở 44 integration test PostgreSQL/Redis vì Testcontainers báo không tìm thấy Docker khả dụng. Đây là hạn chế của môi trường kiểm tra hiện tại, không được ghi thành toàn bộ verify đã pass; không sửa hoặc tắt integration test để né lỗi. Kết quả CI của commit bàn giao cần được kiểm tra riêng trên GitHub.
+
+Database, migration, frontend và workflow giữ nguyên. Các điểm còn cần quyết định trước bước tiếp theo là cách kết nối lại phiên cho user AMS, ràng buộc tài khoản nguồn, phạm vi source ID và tiêu chí một lần đọc được coi là đầy đủ. Thời hạn/refresh của phiên, nguồn tạo `iM`, yêu cầu Origin/Referer và schema API thi riêng vẫn chưa rõ.
+
+Phase 4A dừng ở nền HTTP đã kiểm chứng. Không tự bắt đầu import, scheduler, change detection, Google Calendar hoặc email; không merge vào `main`.
