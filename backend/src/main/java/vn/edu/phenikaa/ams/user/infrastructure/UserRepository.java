@@ -10,6 +10,10 @@ import org.springframework.data.repository.query.Param;
 import vn.edu.phenikaa.ams.user.domain.AppUser;
 
 public interface UserRepository extends JpaRepository<AppUser, UUID> {
+    @org.springframework.data.jpa.repository.Lock(jakarta.persistence.LockModeType.PESSIMISTIC_WRITE)
+    @Query("select u from AppUser u where u.id = :id")
+    Optional<AppUser> lockById(@Param("id") UUID id);
+
     Optional<AppUser> findByEmail(String email);
     @Modifying
     @Query(value = """
