@@ -8,8 +8,8 @@ class PhenikaaAcademicPortalClientTest {
 
     @Test
     void restrictsPortalBaseUriToExpectedHost() {
-        assertThat(PhenikaaAcademicPortalClient.ALLOWED_PORTAL.getScheme()).isEqualTo("https");
-        assertThat(PhenikaaAcademicPortalClient.ALLOWED_PORTAL.getHost())
+        assertThat(PhenikaaHttpTransport.PORTAL.getScheme()).isEqualTo("https");
+        assertThat(PhenikaaHttpTransport.PORTAL.getHost())
                 .isEqualTo("qldtbeta.phenikaa-uni.edu.vn");
     }
 }
