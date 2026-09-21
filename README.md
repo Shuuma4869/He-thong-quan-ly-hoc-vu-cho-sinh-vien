@@ -4,7 +4,7 @@
 
 AMS hỗ trợ sinh viên theo dõi kết quả học tập, chương trình đào tạo, lịch học, lịch thi và kế hoạch tốt nghiệp tại một nơi. Hệ thống được thiết kế để đồng bộ dữ liệu mà chính tài khoản sinh viên có quyền xem, phát hiện thay đổi và chuyển các sự kiện do AMS quản lý sang Google Calendar.
 
-> Đã có tài khoản AMS, đăng nhập bằng session và cài đặt cá nhân, cùng domain/database học vụ chuẩn hóa. Phase 4A đã kiểm chứng đọc lịch Phenikaa bằng HTTP client Java độc lập; chưa có chức năng kết nối tài khoản hoặc nhập lịch từ giao diện AMS. Google Calendar và email chưa được kết nối; dashboard vẫn là giao diện nền, không trình bày dữ liệu giả như dữ liệu production.
+> Đã có tài khoản AMS, đăng nhập bằng session và cài đặt cá nhân, cùng domain/database học vụ chuẩn hóa. Phase 4B bổ sung kết nối Phenikaa mã hóa và nhập hồ sơ đúng tài khoản, đã kiểm chứng bằng Java với PostgreSQL tạm. Chưa có giao diện kết nối Phenikaa; tính năng backend mặc định tắt. Lịch đã đọc được qua HTTP nhưng chưa đủ liên kết môn/học kỳ để lưu. Google Calendar và email chưa được kết nối; dashboard vẫn là giao diện nền, không trình bày dữ liệu giả như dữ liệu production.
 
 ## Phạm vi chính
 
@@ -61,6 +61,8 @@ pnpm dev
 - Swagger UI: `http://localhost:8080/swagger-ui.html`
 
 Mở `/register` để tạo tài khoản sinh viên, sau đó đăng nhập tại `/login`. Không có tài khoản admin mặc định. `/settings` lưu email nhận thông báo, múi giờ, ngôn ngữ ưu tiên và giao diện; email chưa được xác minh và chưa dùng để gửi thông báo.
+
+Phần Phenikaa không tự kết nối khi chạy local. Không cần điền khóa để dùng tài khoản AMS. Nếu phát triển luồng nhập hồ sơ, đọc trước [cấu hình khóa, giới hạn cấp phiên và kết quả Phase 4B](docs/phenikaa-integration.md#phase-4b-kết-nối-mã-hóa-và-nhập-hồ-sơ); không sao chép token từ DevTools vào source hoặc `.env.example`.
 
 ## Kiểm tra
 

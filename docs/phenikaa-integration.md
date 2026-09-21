@@ -1,10 +1,10 @@
 # Kết nối AMS với cổng QLĐT Phenikaa
 
-> Phần khảo sát Phase 3 bên dưới được giữ nguyên theo thời điểm kiểm tra. Kết quả mới ngày 21/09/2026 nằm ở [Phase 4A: kiểm chứng HTTP và giao thức A/B](#phase-4a-kiểm-chứng-http-và-giao-thức-ab): Java đã đọc được lịch qua API nội bộ, nhưng chưa có chức năng nhập dữ liệu vào AMS.
+> Phần khảo sát Phase 3 và kết quả Phase 4A được giữ theo thời điểm kiểm tra. Phần [Phase 4B](#phase-4b-kết-nối-mã-hóa-và-nhập-hồ-sơ) mô tả phần lưu kết nối và nhập hồ sơ mới. Chưa có giao diện kết nối tài khoản Phenikaa trong AMS; lịch chưa được nhập vào database.
 
 Tài liệu này ghi lại những gì đã kiểm tra trên cổng QLĐT Phenikaa trong ngày 18–20/09/2026 và những việc cần làm rõ trước khi viết phần kết nối cho AMS. Người tiếp tục phát triển có thể đọc phần đầu để hiểu hướng xử lý, rồi tra đường dẫn API và tên trường ở các phụ lục.
 
-Phạm vi hiện tại là khảo sát, chưa triển khai nhập dữ liệu vào AMS. `PhenikaaAcademicPortalClient` vẫn chưa có phần gọi HTTP; chương trình chưa tự đồng bộ hồ sơ, lịch hoặc điểm từ trường.
+Phạm vi của phần Phase 3 bên dưới là khảo sát. Khi đó adapter chưa gọi HTTP hoặc nhập dữ liệu; không dùng nhận định lịch sử này để thay cho kết quả Phase 4A/4B ở cuối tài liệu.
 
 ## 1. Những điều cần nắm trước
 
@@ -547,3 +547,156 @@ Lượt local `mvnw.cmd test` chạy 60 test, không lỗi hoặc bỏ qua. `mvn
 Database, migration, frontend và workflow giữ nguyên. Các điểm còn cần quyết định trước bước tiếp theo là cách kết nối lại phiên cho user AMS, ràng buộc tài khoản nguồn, phạm vi source ID và tiêu chí một lần đọc được coi là đầy đủ. Thời hạn/refresh của phiên, nguồn tạo `iM`, yêu cầu Origin/Referer và schema API thi riêng vẫn chưa rõ.
 
 Phase 4A dừng ở nền HTTP đã kiểm chứng. Không tự bắt đầu import, scheduler, change detection, Google Calendar hoặc email; không merge vào `main`.
+
+## Phase 4B: kết nối mã hóa và nhập hồ sơ
+
+### Phạm vi đang có
+
+Phase này thêm nơi lưu kết nối Phenikaa của từng tài khoản AMS và luồng nhập hồ sơ. Phần gọi HTTP nằm trong `PhenikaaHttpClient`; `PhenikaaAcademicPortalClient` phụ trách tra kết nối đúng chủ sở hữu, giải mã phiên trong thời gian gọi nguồn và ghi trạng thái lần truy cập. Tên lớp đổi để tách rõ hai trách nhiệm này, không phải tạo thêm một client gọi nguồn song song.
+
+Chưa có màn hình kết nối, API nhận token hoặc tác vụ chạy định kỳ. Việc cấp phiên hiện chỉ có đường gọi nội bộ dành cho công cụ kiểm chứng local được kiểm soát. Người dùng không được yêu cầu mở DevTools để sao chép Bearer/cookie. Cách đăng nhập/kết nối lại dành cho sản phẩm vẫn cần thiết kế riêng.
+
+Lịch dừng ở **SCHEDULE_PERSISTENCE = BLOCKED_PARTIAL**. Đọc được một buổi học chưa có nghĩa đã xác định được môn và học kỳ của buổi đó. Những khoảng trống này được liệt kê bên dưới; không tạo môn hoặc học kỳ giả để vượt qua ràng buộc database.
+
+### Kết nối thuộc về ai?
+
+Mỗi tài khoản AMS có tối đa một hàng `phenikaa_connection`, kể cả sau khi ngắt kết nối. Kết nối lại cập nhật chính hàng này, giữ nguyên UUID. Đây là quy tắc chặt hơn “một kết nối đang hoạt động”: nó đơn giản hóa việc tìm kết nối hiện tại và giữ ràng buộc nguồn khi đăng nhập lại.
+
+`user_id` là khóa ngoại tới `app_user`. UUID của kết nối và UUID của hồ sơ đều do AMS tạo; không dùng mã sinh viên hoặc ID của trường làm khóa chính. API đọc trạng thái lấy user từ principal của Spring Security, tức là danh tính đã đăng nhập trong session AMS. Tham số `userId` do browser gửi không được dùng để chọn tài khoản.
+
+Trước khi đọc hoặc thay đổi kết nối, adapter kiểm tra user còn `ACTIVE` và khóa hàng tài khoản trong transaction. “Khóa hàng” ở đây là khóa ghi của PostgreSQL: hai lượt nhập đồng thời của cùng user phải lần lượt xử lý, kể cả khi hồ sơ chưa tồn tại. Unique constraint trên `student_profile.user_id` vẫn là lớp bảo vệ cuối cùng, không chỉ dựa vào kiểm tra trong Java.
+
+Khóa được giữ cả trong lúc gọi HTTP, tối đa theo timeout đã cấu hình. Đây là lựa chọn đơn giản cho luồng nhập thủ công hiện tại; một lượt nguồn chậm có thể khiến lượt nhập khác của cùng user phải chờ. Khi có worker hoặc tải lớn hơn cần đánh giá lại, không coi cách này là thiết kế hàng đợi hoàn chỉnh.
+
+Ngoài phiên mã hóa, kết nối giữ `encrypted_subject`: ID người học được mã hóa riêng, chỉ dùng so sánh khi kết nối lại. Ngắt kết nối xóa phiên dùng để gọi nguồn nhưng giữ phần ràng buộc này. Nhờ vậy, đăng nhập một tài khoản trường khác không âm thầm ghi đè hồ sơ học vụ đã có. Đổi sang tài khoản nguồn khác hiện bị từ chối bằng `SOURCE_ACCOUNT_MISMATCH`; chưa có quy trình chuyển hoặc xóa hồ sơ để thực hiện việc đó.
+
+### Phiên được bảo vệ như thế nào?
+
+Phiên được mã hóa bằng **AES-256-GCM** qua JCA/JCE của Java, không dùng giao thức XOR A/B làm lớp bảo vệ lưu trữ. AES bảo vệ nội dung; GCM thêm kiểm tra toàn vẹn để phát hiện dữ liệu bị sửa hoặc giải mã bằng sai khóa.
+
+Mỗi lần mã hóa có nonce ngẫu nhiên 12 byte và authentication tag 16 byte. Nonce không phải mật khẩu và được lưu cùng ciphertext. Dùng nonce mới giúp hai lần mã hóa cùng nội dung tạo ra kết quả khác nhau. Không dùng IV cố định.
+
+AAD là phần ngữ cảnh được xác thực cùng ciphertext nhưng không cần giữ bí mật. AMS đưa mục đích (`session` hoặc `subject`), phiên bản format, phiên bản khóa, UUID kết nối và UUID user vào AAD. Ví dụ, chép cột mã hóa từ kết nối của người A sang người B sẽ làm kiểm tra toàn vẹn thất bại, không tạo một phiên hợp lệ của B.
+
+Payload phiên có phiên bản riêng, hiện là `1`, lưu theo định dạng nhị phân có độ dài từng chuỗi. Nội dung gồm Bearer, cookie tùy chọn, khóa phản hồi, ID người học và **hai mã chức năng riêng cho hồ sơ/lịch**. Format không được expose qua API. Mã chức năng riêng là cần thiết vì lần khảo sát mới thấy hai request dùng giá trị khác nhau, dù người học và khóa phản hồi giống nhau.
+
+Sau giải mã, dữ liệu chỉ sống trong phạm vi một lần truy cập và được đóng trong `try-with-resources`. Các mảng byte/ký tự do code sở hữu được xóa best-effort. Cần hiểu đúng giới hạn: Java, JSON parser và HTTP client có thể tạo bản sao chuỗi; không thể bảo đảm xóa mọi bản sao khỏi heap. Không bật wire logging, SQL bind logging hoặc heap dump khi xử lý phiên thật.
+
+`toString()` của phiên, cipher, entity kết nối và dữ liệu hồ sơ đều che nội dung. Lỗi nguồn chỉ được chuyển thành mã cố định; không kèm message gốc, response body hoặc ID người học. Lỗi toàn vẹn trả `SESSION_INTEGRITY_FAILURE`, không giả định là token hết hạn.
+
+### Cấu hình khóa và bật tính năng
+
+Mặc định `AMS_PHENIKAA_ENABLED=false`. Khi chưa bật, backend vẫn có schema nhưng không tạo client nhập hồ sơ hoặc endpoint trạng thái Phenikaa. Đây không phải trường hợp trả hồ sơ rỗng để giả lập nguồn đã kết nối.
+
+Để bật tính năng, cấu hình bên ngoài source:
+
+| Biến | Ý nghĩa |
+| --- | --- |
+| `AMS_PHENIKAA_ENABLED` | Bật bằng `true` khi đã có khóa riêng và quy trình cấp phiên được kiểm soát |
+| `AMS_PHENIKAA_SESSION_KEY` | Khóa ngẫu nhiên 32 byte được biểu diễn Base64; không phải chuỗi mật khẩu tự đặt |
+| `AMS_PHENIKAA_KEY_VERSION` | Số nguyên dương, mặc định `1`; nhận diện khóa đang dùng |
+| `AMS_PHENIKAA_CONNECT_TIMEOUT` | Giới hạn kết nối, mặc định `8s` |
+| `AMS_PHENIKAA_RESPONSE_TIMEOUT` | Giới hạn toàn bộ phản hồi, mặc định `15s` |
+| `AMS_PHENIKAA_MAX_RESPONSE_BYTES` | Giới hạn phản hồi, mặc định 2 MiB |
+
+Nếu bật mà thiếu/sai khóa, startup thất bại với thông báo cố định, không in giá trị cấu hình. Không có khóa production mặc định; `.env.example` chỉ để placeholder rỗng. Test sinh khóa riêng, không đọc khóa production.
+
+Hiện chỉ hỗ trợ một phiên bản khóa đang hoạt động, chưa có key ring hoặc công cụ xoay khóa. **Không chỉ đổi khóa trong environment rồi khởi động lại:** dữ liệu cũ sẽ không giải mã được. Việc xoay khóa phải giải mã bằng khóa cũ và mã hóa lại bằng khóa mới trong quy trình riêng có kiểm thử. Mất khóa cũng làm mất khả năng đọc phiên/ràng buộc nguồn đã lưu; bản sao database không thay thế được việc bảo vệ khóa.
+
+### Trạng thái và xử lý lỗi
+
+| Tình huống | Trạng thái sau đó | Dữ liệu được giữ lại |
+| --- | --- | --- |
+| Cấp phiên nội bộ và kiểm tra hồ sơ thành công | `CONNECTED` | Phiên mã hóa, ràng buộc nguồn và thời điểm xác thực |
+| Nguồn trả dấu hiệu hết xác thực đã nhận diện (`SESSION_EXPIRED`) | `RECONNECTION_REQUIRED` | Hồ sơ, học vụ cũ và ciphertext; không dùng lại phiên cho tới khi kết nối lại |
+| Timeout, lỗi mạng, HTTP/nghiệp vụ/schema/giải mã | Giữ trạng thái hiện tại | Hồ sơ cũ, phiên mã hóa; cập nhật thời điểm và mã lỗi |
+| Chủ tài khoản ngắt kết nối qua thao tác nội bộ | `DISCONNECTED` | Hồ sơ/học vụ và ràng buộc nguồn; xóa `encrypted_session` |
+
+`session_expires_at` hiện là `NULL`: chưa xác minh được expiry đáng tin cậy, không tự đặt thời hạn theo phỏng đoán. `last_failed_access_at`/`last_failure_code` ghi lần lỗi gần nhất và vẫn được giữ khi lượt sau thành công; cần so sánh với `last_successful_access_at` để hiểu thứ tự, không coi mã lỗi cũ là kết quả hiện tại.
+
+Nếu đã ngắt kết nối, thử cấp lại một phiên lỗi vẫn giữ `DISCONNECTED`. Không chuyển sang trạng thái có phiên khi ciphertext đã bị xóa; chỉ lần cấp phiên được kiểm tra thành công mới kích hoạt lại kết nối.
+
+Luồng nhập đọc và kiểm tra **toàn bộ hồ sơ trước khi sửa dữ liệu học vụ**. Lỗi nguồn được phép lưu metadata thất bại của kết nối mà không ghi hồ sơ. Lỗi database khi thực sự ghi hồ sơ làm rollback cả transaction, gồm metadata thành công vừa cập nhật. Vì vậy, `noRollbackFor` chỉ áp dụng cho loại lỗi nguồn an toàn đã định nghĩa, không áp dụng cho mọi exception.
+
+### Request hồ sơ và dữ liệu được nhập
+
+**OBSERVED trong request thật và mã `tunhaphoso.js`:**
+
+```text
+POST /sinhvienapi3/api/SV_Custom/DSA4FSkuLyYVKC8CKSgVKCQ1CS4SLgPP
+Content-Type: application/x-www-form-urlencoded; charset=UTF-8
+Body: A=<nội dung tạo theo giao thức Phase 4A>
+```
+
+JSON trước khi tạo A gồm `action`, `func=pkg_hosohocvien.LayThongTinChiTietHoSo`, `iM`, `strId`, `strChucNang_Id`, `strNguoiThucHien_Id`. ID đích và ID người thực hiện đều lấy từ phiên nguồn được cấp nội bộ; không nhận ID tùy ý từ browser AMS.
+
+Trong mẫu đọc ngày 21/09/2026, HTTP thành công, `Success=true`, giải mã được mảng có đúng một hồ sơ và `ID` khớp `strId` đã yêu cầu. Mapper yêu cầu đúng một phần tử và kiểm tra ID trước khi lấy dữ liệu. Nếu nguồn thay đổi cấu trúc, thiếu ID hoặc trả người học khác, cả lượt đọc bị từ chối.
+
+| Trường nguồn | Cách dùng trong AMS | Giới hạn |
+| --- | --- | --- |
+| `ID` | Kiểm tra đúng người học của phiên | Không đưa lên API trạng thái hoặc dùng làm UUID AMS |
+| `MASO` | `StudentProfile.studentNumber` | Bắt buộc là chuỗi hợp lệ, tối đa 80 ký tự |
+| `NGANH` | `StudentProfile.programName` | Tên ngành hiển thị; chưa phải identity hoặc phiên bản curriculum |
+| `KHOADAOTAO`, `MANGANH`, `LOP` | Chưa nhập | Đã thấy tên trường, nhưng chưa chốt mapping phù hợp với domain hiện tại |
+| `DAOTAO_TOCHUCCHUONGTRINH_ID` | Chưa nhập | `null` trong mẫu; không tạo curriculum thay thế |
+
+Không nhập họ tên, ngày sinh, số giấy tờ, điện thoại hoặc địa chỉ chỉ vì response có sẵn. Không lưu raw profile response. Tên trường, cohort, curriculum và grading policy đã có trong AMS được giữ nguyên vì nguồn hiện chưa xác nhận đủ để cập nhật chúng.
+
+Khi `NGANH` thiếu hoặc `null`, hồ sơ mới để trống và hồ sơ cũ giữ giá trị đã có. Chuỗi trắng, sai kiểu hoặc vượt độ dài là lỗi schema, không coi là yêu cầu xóa. Nhập lần hai tìm theo user, cập nhật cùng UUID. Đây là tính idempotent: thực hiện lại cùng việc không sinh thêm hồ sơ trùng.
+
+### Contract cho application và API trạng thái
+
+`AcademicPortalClient` bỏ `fetchSnapshot` chưa triển khai, thay bằng các khả năng thực sự có: tìm kết nối hiện tại, `fetchProfile` và `fetchSchedule`. Application truyền UUID của user đã xác thực và `StudentConnectionId`, không cầm `PhenikaaSession`. Adapter luôn kiểm tra lại cặp user/kết nối trước khi giải mã.
+
+`ProfileImportService.importCurrentProfile` chỉ nhận user hiện tại do server xác định; không nhận mã sinh viên hoặc người học để chọn đối tượng đích. Chưa expose thao tác import/cấp phiên thành API công khai. Luồng kết nối qua giao diện sẽ cần thiết kế riêng, không tái sử dụng helper research như một endpoint production.
+
+Khi bật tính năng, `GET /api/me/connections/phenikaa` chỉ trả trạng thái, các thời điểm truy cập, mã lỗi an toàn và cờ cần kết nối lại. User chưa có kết nối nhận `DISCONNECTED` với thời điểm trống. Không trả UUID nguồn, Bearer, cookie, khóa phản hồi hoặc ciphertext. Spring Security/session/CSRF hiện tại giữ nguyên; không có API CRUD cho các bảng mới.
+
+### Vì sao lịch chưa được lưu?
+
+Đã đọc toàn bộ tên trường của mẫu lịch giải mã và đối chiếu mã `lichgiang.js`. Ngoài các trường Phase 4A đã dùng, mẫu có các nhãn lớp, giảng viên, phòng và tiết học. Các trường này hữu ích để hiển thị nhưng chưa tạo được liên kết đáng tin cậy sang `Course` và `Semester`.
+
+| Quan hệ cần có | Bằng chứng hiện tại | Kết luận |
+| --- | --- | --- |
+| Lớp → môn | Có `TENHOCPHAN`, các ID/nhãn lớp; không có mã/ID môn và tín chỉ rõ ràng trong item đã quan sát | Chưa xác minh được mapping tối thiểu để tạo `Course`; không dùng tên môn hoặc hash tên làm mã |
+| Lớp → học kỳ | Chưa có năm học, mã kỳ/đợt hoặc thời gian đào tạo có thể giải thích trong item | Không suy học kỳ từ ngày buổi học |
+| Mã lớp nguồn → `ClassSection` | Có `IDLOPHOCPHAN` và `DANGKY_LOPHOCPHAN_ID` riêng | Giữ cả hai; chưa mặc định cùng ý nghĩa hoặc duy nhất trong mọi phạm vi |
+| Buổi nguồn → `ClassSession` | Có ứng viên `IDLICHHOC` | Giữ mức quan sát qua reload; ổn định khi đổi giờ/phòng vẫn **UNKNOWN** |
+
+Các tên được quan sát thêm gồm `DANGKY_LOPHOCPHAN_TEN`, `TENLOPHOCPHAN`, `GIANGVIEN_ID`, `IDPHONGHOC`, `PHONGHOC_TEN`, `PHONGHOC_MA`, `SOTIET`, `TIETBATDAU`, `TIETKETTHUC`, `BUOIHOC`. Không dùng việc tên trường xuất hiện để tự suy nghĩa hoặc scope của ID.
+
+Chưa xác minh được request hỗ trợ nhỏ nhất để nối lớp → môn → kỳ. Phần này cần nghiên cứu tiếp trong phạm vi được duyệt; không gọi/import toàn bộ curriculum để lấp chỗ trống. Việc “không thấy trong mẫu” cũng không chứng minh mọi endpoint của portal đều thiếu thông tin đó.
+
+Vì chưa qua gate, không tạo source mapping table, không insert `Course`, `Semester`, `ClassSection` hoặc `ClassSession`. Kết quả lịch vẫn là `ScheduleObservation` với `completeness=UNKNOWN`. Response rỗng không xóa lịch, không đánh dấu hủy, không phát `CLASS_REMOVED`. Không dùng `ID` của giao diện hoặc ngày/giờ/phòng làm identity.
+
+### Những điều vẫn chưa được kết luận
+
+- Cookie chỉ được chứng minh có thể bỏ trong mẫu lịch của Phase 4A. Lượt hồ sơ giữ cookie; chưa thử bỏ riêng nên không suy rộng sang hồ sơ hoặc API thi.
+- Mẫu hồ sơ/lịch dùng cùng `iM`; nơi tạo, lifecycle và refresh vẫn **UNKNOWN**. Hai capability giữ mã chức năng riêng.
+- Chưa chờ hết hạn tự nhiên hoặc kiểm chứng refresh. Chỉ các dấu hiệu 401/redirect login đã nhận diện mới dẫn tới yêu cầu kết nối lại.
+- Chưa có quy trình đổi tài khoản trường, xoay khóa, production connect UX hoặc lịch chạy đồng bộ.
+- Không triển khai API thi riêng, điểm, curriculum đầy đủ, change detection, Google Calendar hoặc email trong Phase 4B.
+
+### Kiểm thử và lượt kiểm chứng local
+
+**VERIFIED ngày 21/09/2026:** Java chạy độc lập với DOM, dùng chính client và application service của backend để đọc hồ sơ thật. Phiên do chủ tài khoản tự đăng nhập được bàn giao một lần qua loopback, mã hóa AES-GCM và kiểm tra chữ ký; khóa bàn giao chỉ tồn tại tạm. Helper nằm ngoài repository, không có endpoint bàn giao trong source ứng dụng.
+
+Lượt thử dùng tài khoản AMS giả trong PostgreSQL Testcontainers riêng, không ghi vào database đang dùng của dự án. Kết quả chỉ xuất boolean/số lượng:
+
+| Bước | Kết quả |
+| --- | --- |
+| Java gọi HTTP, nghiệp vụ nguồn thành công, giải mã và mapping hồ sơ | Thành công |
+| Lưu kết nối với phiên mã hóa | Thành công; expiry vẫn NULL |
+| Import vào hồ sơ thuộc user của kết nối | Thành công, 1 hồ sơ |
+| Import lần hai | Vẫn 1 hồ sơ, giữ UUID |
+| Đóng database/Redis tạm | Đã đóng; không giữ hồ sơ thật làm fixture |
+
+Lần chuẩn bị helper đầu tiên dừng do classloader của chế độ chạy Java source không truy cập được lớp cấu hình test; chưa tới bước gọi nguồn. Helper được biên dịch trước khi chạy lại. Kết quả thành công ở bảng trên là lượt sau, không suy từ lượt Node kiểm tra cấu trúc ban đầu.
+
+Lệnh local `mvnw.cmd -o verify` sau khi hoàn thiện đạt **85 unit/HTTP test và 62 integration test**, không lỗi hoặc bỏ qua. Các ca mới kiểm tra mã hóa/toàn vẹn/AAD/khóa sai, cấu hình khóa, HTTP hồ sơ, ownership, constraint, migrate V5 → V6, nhập lặp/đồng thời, ngắt/kết nối lại, schema/hết phiên và rollback khi database lỗi. Schema sạch cũng khởi động thành công với `ddl-auto=validate`. Ca kết nối lại thất bại sau khi đã ngắt cũng được bổ sung để kiểm tra trạng thái không mâu thuẫn với việc phiên đã bị xóa.
+
+Hai lỗi ở lượt test trung gian đã được xử lý: mock hết phiên phải được thay bằng `doReturn` để không ném lỗi ngay lúc thiết lập lại; context kiểm thử cấu hình phải dùng bộ chuyển đổi kiểu của Spring Boot để đọc timeout dạng `8s`. Không tắt check hoặc đổi hành vi production để né test.
+
+CI chỉ dùng HTTP loopback/mocks và fixture tổng hợp, không gọi Phenikaa thật, không cần credential của trường. Helper, browser profile và dữ liệu container của lượt live đã được dọn. Đã đối chiếu 68 file code/docs/test report với các giá trị phiên đang có trong bộ nhớ: không có file khớp; sau đó đã giải phóng phiên nghiên cứu. Đây là kiểm tra các giá trị đã biết, không phải cam kết rằng một công cụ quét có thể chứng minh tuyệt đối không còn dữ liệu nhạy cảm ở mọi nơi trên máy.
+
+Phần Connection + Profile đã qua kiểm chứng local; trạng thái CI phải đối chiếu với đúng commit bàn giao trên GitHub. Schedule persistence vẫn **BLOCKED_PARTIAL** theo gate nêu trên, không bị đổi thành PASS chỉ vì test hồ sơ đạt.
