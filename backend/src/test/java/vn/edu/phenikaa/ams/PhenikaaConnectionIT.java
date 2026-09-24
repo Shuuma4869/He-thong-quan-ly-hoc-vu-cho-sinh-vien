@@ -70,6 +70,57 @@ class PhenikaaConnectionIT {
         try (var material = material("synthetic-learner")) { return portal.connect(owner.getId(), material); }
     }
 
+    private AcademicPortalClient.StudentConnectionId connectWithExams() {
+        try (var material = new PhenikaaSessionMaterial("Bearer synthetic-secret", "", "synthetic-response-key",
+                "synthetic-learner", "synthetic-profile-function", "synthetic-schedule-function", "synthetic-exam-function")) {
+            return portal.connect(owner.getId(), material);
+        }
+    }
+
+    @Test void examCapabilityUsesOwnedEncryptedContextAndDoesNotCreateAcademicRecords() {
+        var connection = connectWithExams();
+        var period = new ExamPeriod("synthetic-period", "Kỳ giả định");
+        var observation = new ExamObservation(period, java.time.ZoneId.of("Asia/Ho_Chi_Minh"), java.util.List.of());
+        when(http.fetchExamPeriods(any())).thenReturn(java.util.List.of(period));
+        when(http.fetchExams(any(), eq(period))).thenReturn(observation);
+        clearInvocations(http);
+        assertThatThrownBy(() -> portal.fetchExamPeriods(other.getId(), connection)).hasMessage("CONNECTION_UNAVAILABLE");
+        assertThatThrownBy(() -> portal.fetchExams(other.getId(), connection, period)).hasMessage("CONNECTION_UNAVAILABLE");
+        verifyNoInteractions(http);
+        assertThat(portal.fetchExamPeriods(owner.getId(), connection)).containsExactly(period);
+        assertThat(portal.fetchExams(owner.getId(), connection, period)).isEqualTo(observation);
+        assertThat(profiles.findByUserId(owner.getId())).isEmpty();
+        assertThat(portal.status(owner.getId()).lastSuccessfulAccessAt()).isNotNull();
+        jdbc.update("update app_user set account_status = 'DISABLED' where id = ?", owner.getId());
+        clearInvocations(http);
+        assertThatThrownBy(() -> portal.fetchExams(owner.getId(), connection, period)).hasMessage("CONNECTION_UNAVAILABLE");
+        verifyNoInteractions(http);
+    }
+
+    @Test void missingExamContextPreservesWorkingProfileConnection() {
+        var connection = connect();
+        clearInvocations(http);
+        assertThatThrownBy(() -> portal.fetchExamPeriods(owner.getId(), connection)).hasMessage("CONNECTION_UNAVAILABLE");
+        verifyNoInteractions(http);
+        assertThat(portal.status(owner.getId()).status()).isEqualTo(PhenikaaConnection.Status.CONNECTED);
+        assertThat(imports.importCurrentProfile(owner.getId())).isNotNull();
+    }
+
+    @ParameterizedTest @EnumSource(PhenikaaClientException.Code.class)
+    void examFailurePreservesProfileAndCiphertextAndOnlyExpiredSessionRequiresReconnect(PhenikaaClientException.Code code) {
+        var connection = connectWithExams();
+        UUID profile = imports.importCurrentProfile(owner.getId());
+        byte[] previous = jdbc.queryForObject("select encrypted_session from phenikaa_connection where id = ?", byte[].class, connection.value());
+        var period = new ExamPeriod("synthetic-period", "Kỳ giả định");
+        when(http.fetchExams(any(), eq(period))).thenThrow(new PhenikaaClientException(code));
+        assertThatThrownBy(() -> portal.fetchExams(owner.getId(), connection, period)).hasMessage(code.name()).hasNoCause();
+        assertThat(portal.status(owner.getId()).reconnectionRequired()).isEqualTo(code == PhenikaaClientException.Code.SESSION_EXPIRED);
+        assertThat(portal.status(owner.getId()).lastFailureCode().name()).isEqualTo(code.name());
+        assertThat(profiles.findById(profile)).isPresent();
+        assertThat(jdbc.queryForObject("select encrypted_session from phenikaa_connection where id = ?", byte[].class, connection.value()))
+                .isEqualTo(previous);
+    }
+
     @Test void persistsOnlyCiphertextAndEnforcesOwnerAndUniqueConnection() {
         var connection = connect();
         var row = jdbc.queryForMap("select * from phenikaa_connection where id = ?", connection.value());

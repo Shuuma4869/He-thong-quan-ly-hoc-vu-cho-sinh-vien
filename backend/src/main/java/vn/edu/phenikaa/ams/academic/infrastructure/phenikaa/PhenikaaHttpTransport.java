@@ -16,6 +16,8 @@ public final class PhenikaaHttpTransport implements AutoCloseable {
     static final URI PORTAL = URI.create("https://qldtbeta.phenikaa-uni.edu.vn");
     static final String SCHEDULE_PATH = "/sinhvienapi3/api/SV_ThongTin_MH/DSA4BRINKCIpAiAPKSAv";
     static final String PROFILE_PATH = "/sinhvienapi3/api/SV_Custom/DSA4FSkuLyYVKC8CKSgVKCQ1CS4SLgPP";
+    static final String EXAM_PERIODS_PATH = "/sinhvienapi3/api/SV_ThongTin_MH/DSA4BRIVKS4oBiggLw0oIikVKSgP";
+    static final String EXAMS_PATH = "/sinhvienapi3/api/SV_ThongTin_MH/DSA4BRINKCIpFSkoHgokCS4gIikVKSgP";
     private final HttpClient client;
     private final URI baseUri;
     private final Duration responseTimeout;
@@ -54,6 +56,14 @@ public final class PhenikaaHttpTransport implements AutoCloseable {
 
     byte[] readProfile(PhenikaaSession session, String encodedRequest) {
         return read(session, encodedRequest, PROFILE_PATH);
+    }
+
+    byte[] readExamPeriods(PhenikaaSession session, String encodedRequest) {
+        return read(session, encodedRequest, EXAM_PERIODS_PATH);
+    }
+
+    byte[] readExams(PhenikaaSession session, String encodedRequest) {
+        return read(session, encodedRequest, EXAMS_PATH);
     }
 
     private byte[] read(PhenikaaSession session, String encodedRequest, String path) {
