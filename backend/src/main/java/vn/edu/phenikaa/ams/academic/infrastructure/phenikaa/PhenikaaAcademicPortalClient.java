@@ -3,6 +3,7 @@ package vn.edu.phenikaa.ams.academic.infrastructure.phenikaa;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.UUID;
+import java.util.List;
 import java.util.function.Function;
 import org.springframework.transaction.annotation.Transactional;
 import vn.edu.phenikaa.ams.academic.application.port.*;
@@ -66,6 +67,19 @@ public class PhenikaaAcademicPortalClient implements AcademicPortalClient {
     @Override public ScheduleObservation fetchSchedule(UUID currentUserId, StudentConnectionId connectionId,
                                                        LocalDate from, LocalDate through) {
         return access(currentUserId, connectionId, material -> http.fetchSchedule(material.schedule(), from, through));
+    }
+
+    @Override public List<ExamPeriod> fetchExamPeriods(UUID currentUserId, StudentConnectionId connectionId) {
+        return access(currentUserId, connectionId, material -> http.fetchExamPeriods(examSession(material)));
+    }
+
+    @Override public ExamObservation fetchExams(UUID currentUserId, StudentConnectionId connectionId, ExamPeriod period) {
+        return access(currentUserId, connectionId, material -> http.fetchExams(examSession(material), period));
+    }
+
+    private static PhenikaaSession examSession(PhenikaaSessionMaterial material) {
+        if (material.exam() == null) throw new AcademicPortalException(CONNECTION_UNAVAILABLE);
+        return material.exam();
     }
 
     private <T> T access(UUID userId, StudentConnectionId id, Function<PhenikaaSessionMaterial, T> operation) {

@@ -22,6 +22,44 @@ class PhenikaaSessionCipherTest {
                 "synthetic-learner", "synthetic-profile-function", "synthetic-schedule-function");
     }
 
+    @Test void readsLegacyEncryptedPayloadWithoutRewritingItOrGrantingExamCapability() throws Exception {
+        String key = randomKey();
+        byte[] legacy;
+        try (var buffer = new java.io.ByteArrayOutputStream(); var output = new java.io.DataOutputStream(buffer)) {
+            output.writeInt(1);
+            for (String value : new String[]{"Bearer synthetic-secret", "", "synthetic-key", "synthetic-learner",
+                    "synthetic-profile-function", "synthetic-schedule-function"}) output.writeUTF(value);
+            legacy = buffer.toByteArray();
+        }
+        byte[] nonce = new byte[12];
+        new SecureRandom().nextBytes(nonce);
+        var oldCipher = javax.crypto.Cipher.getInstance("AES/GCM/NoPadding");
+        oldCipher.init(javax.crypto.Cipher.ENCRYPT_MODE, new javax.crypto.spec.SecretKeySpec(Base64.getDecoder().decode(key), "AES"),
+                new javax.crypto.spec.GCMParameterSpec(128, nonce));
+        oldCipher.updateAAD(("AMS:phenikaa:session:1:1:" + connectionId + ":" + userId)
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8));
+        byte[] ciphertext = oldCipher.doFinal(legacy);
+        byte[] stored = java.nio.ByteBuffer.allocate(nonce.length + ciphertext.length).put(nonce).put(ciphertext).array();
+        try (var cipher = new PhenikaaSessionCipher(key, 1); var result = cipher.decrypt(stored, 1, connectionId, userId)) {
+            assertThat(result.profile().learnerId()).isEqualTo("synthetic-learner");
+            assertThat(result.schedule().functionId()).isEqualTo("synthetic-schedule-function");
+            assertThat(result.exam()).isNull();
+        }
+        java.util.Arrays.fill(legacy, (byte) 0);
+    }
+
+    @Test void keepsExamContextSeparateInVersionTwoAndClosesIt() {
+        try (var cipher = new PhenikaaSessionCipher(randomKey(), 1);
+             var original = new PhenikaaSessionMaterial("Bearer synthetic-secret", "", "synthetic-key", "synthetic-learner",
+                     "synthetic-profile-function", "synthetic-schedule-function", "synthetic-exam-function")) {
+            var restored = cipher.decrypt(cipher.encrypt(original, connectionId, userId), 1, connectionId, userId);
+            assertThat(restored.exam().functionId()).isEqualTo("synthetic-exam-function");
+            assertThat(restored.schedule().functionId()).isEqualTo("synthetic-schedule-function");
+            restored.close();
+            assertThatThrownBy(() -> restored.exam().authorization()).isInstanceOf(IllegalStateException.class);
+        }
+    }
+
     @Test void roundTripKeepsSeparateCapabilityContextAndWipesOwnedArraysOnClose() throws Exception {
         try (var cipher = new PhenikaaSessionCipher(randomKey(), 1); var original = material()) {
             var encrypted = cipher.encrypt(original, connectionId, userId);

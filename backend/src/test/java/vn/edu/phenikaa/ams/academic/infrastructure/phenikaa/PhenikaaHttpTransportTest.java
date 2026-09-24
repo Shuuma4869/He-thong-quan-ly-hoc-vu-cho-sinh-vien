@@ -245,6 +245,17 @@ class PhenikaaHttpTransportTest {
     }
 
     @Test
+    void preservesSeparateDatesWhenSourceScheduleIdIsReused() {
+        handler = exchange -> reply(exchange, 200, envelope("[" + ITEM + ","
+                + ITEM.replace("21/09/2026", "28/09/2026") + "]"));
+        var result = client.fetchSchedule(session, DAY, DAY.plusDays(7));
+        assertThat(result.entries()).hasSize(2);
+        assertThat(result.entries().getFirst().identity()).isEqualTo(result.entries().getLast().identity());
+        assertThat(result.entries().getFirst().date()).isNotEqualTo(result.entries().getLast().date());
+        assertThat(result.entries().getFirst().identity().scope()).isEqualTo(ScheduleObservation.IdentityScope.UNVERIFIED);
+    }
+
+    @Test
     void forbidsUntrustedAddressesAndWireLogging() {
         for (String uri : new String[]{"https://example.invalid", "http://qldtbeta.phenikaa-uni.edu.vn", "http://user@127.0.0.1", "http://127.0.0.1/path"}) {
             assertThatThrownBy(() -> new PhenikaaHttpTransport(URI.create(uri), Duration.ofSeconds(1), Duration.ofSeconds(1), 1024))

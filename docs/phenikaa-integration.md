@@ -1,6 +1,6 @@
 # Kết nối AMS với cổng QLĐT Phenikaa
 
-> Phần khảo sát Phase 3 và kết quả Phase 4A được giữ theo thời điểm kiểm tra. Phần [Phase 4B](#phase-4b-kết-nối-mã-hóa-và-nhập-hồ-sơ) mô tả phần lưu kết nối và nhập hồ sơ mới. Chưa có giao diện kết nối tài khoản Phenikaa trong AMS; lịch chưa được nhập vào database.
+> Các phần Phase 3/4A/4B được giữ theo thời điểm kiểm tra. Kết quả mới nhất ở [Phase 4C](#phase-4c-lịch-học-và-lịch-thi): đã đọc lịch thi cá nhân bằng Java qua API riêng, nhưng chưa đủ cơ sở lưu lịch học/lịch thi vào domain. Đáng chú ý, `IDLICHHOC` lặp qua nhiều ngày, không phải khóa duy nhất cho từng buổi. Chưa có giao diện kết nối tài khoản Phenikaa trong AMS.
 
 Tài liệu này ghi lại những gì đã kiểm tra trên cổng QLĐT Phenikaa trong ngày 18–20/09/2026 và những việc cần làm rõ trước khi viết phần kết nối cho AMS. Người tiếp tục phát triển có thể đọc phần đầu để hiểu hướng xử lý, rồi tra đường dẫn API và tên trường ở các phụ lục.
 
@@ -578,7 +578,7 @@ Mỗi lần mã hóa có nonce ngẫu nhiên 12 byte và authentication tag 16 b
 
 AAD là phần ngữ cảnh được xác thực cùng ciphertext nhưng không cần giữ bí mật. AMS đưa mục đích (`session` hoặc `subject`), phiên bản format, phiên bản khóa, UUID kết nối và UUID user vào AAD. Ví dụ, chép cột mã hóa từ kết nối của người A sang người B sẽ làm kiểm tra toàn vẹn thất bại, không tạo một phiên hợp lệ của B.
 
-Payload phiên có phiên bản riêng, hiện là `1`, lưu theo định dạng nhị phân có độ dài từng chuỗi. Nội dung gồm Bearer, cookie tùy chọn, khóa phản hồi, ID người học và **hai mã chức năng riêng cho hồ sơ/lịch**. Format không được expose qua API. Mã chức năng riêng là cần thiết vì lần khảo sát mới thấy hai request dùng giá trị khác nhau, dù người học và khóa phản hồi giống nhau.
+Payload phiên có phiên bản riêng, ở Phase 4B là `1`, lưu theo định dạng nhị phân có độ dài từng chuỗi. Nội dung gồm Bearer, cookie tùy chọn, khóa phản hồi, ID người học và **hai mã chức năng riêng cho hồ sơ/lịch**. Format không được expose qua API. Mã chức năng riêng là cần thiết vì lần khảo sát mới thấy hai request dùng giá trị khác nhau, dù người học và khóa phản hồi giống nhau. Phase 4C mở rộng payload nhưng vẫn đọc được phiên bản này; xem phần tương thích bên dưới.
 
 Sau giải mã, dữ liệu chỉ sống trong phạm vi một lần truy cập và được đóng trong `try-with-resources`. Các mảng byte/ký tự do code sở hữu được xóa best-effort. Cần hiểu đúng giới hạn: Java, JSON parser và HTTP client có thể tạo bản sao chuỗi; không thể bảo đảm xóa mọi bản sao khỏi heap. Không bật wire logging, SQL bind logging hoặc heap dump khi xử lý phiên thật.
 
@@ -700,3 +700,138 @@ Hai lỗi ở lượt test trung gian đã được xử lý: mock hết phiên 
 CI chỉ dùng HTTP loopback/mocks và fixture tổng hợp, không gọi Phenikaa thật, không cần credential của trường. Helper, browser profile và dữ liệu container của lượt live đã được dọn. Đã đối chiếu 68 file code/docs/test report với các giá trị phiên đang có trong bộ nhớ: không có file khớp; sau đó đã giải phóng phiên nghiên cứu. Đây là kiểm tra các giá trị đã biết, không phải cam kết rằng một công cụ quét có thể chứng minh tuyệt đối không còn dữ liệu nhạy cảm ở mọi nơi trên máy.
 
 Phần Connection + Profile đã qua kiểm chứng local; trạng thái CI phải đối chiếu với đúng commit bàn giao trên GitHub. Schedule persistence vẫn **BLOCKED_PARTIAL** theo gate nêu trên, không bị đổi thành PASS chỉ vì test hồ sơ đạt.
+
+## Phase 4C: lịch học và lịch thi
+
+### Kết quả và giới hạn
+
+Phase 4C bổ sung bộ đọc lịch thi cá nhân qua API riêng, không lấy các mục `LICHTHI` trong thời khóa biểu để thay thế. Lượt Java ngày 24/09/2026 đã gọi nguồn thật, giải mã và chuẩn hóa được 6 lịch thi; số lượng khớp với trình duyệt. Phần hồ sơ của 4B được giữ nguyên.
+
+**Phase 4 tổng thể vẫn là PARTIAL.** Lý do chính không còn là “chưa tìm được API”, mà là chưa xác định được cách nối một bản ghi nguồn với đúng đối tượng trong AMS:
+
+| Phần việc | Trạng thái | Phạm vi kết luận |
+| --- | --- | --- |
+| Nhập hồ sơ | PASS từ 4B | Kiểm thử hồi quy tiếp tục đạt |
+| Đọc lịch học | PASS | Đọc theo khoảng ngày; chưa khẳng định đầy đủ |
+| Lưu lịch học | BLOCKED_PARTIAL | Chưa có học kỳ đã xác minh và khóa riêng cho từng buổi |
+| Đọc lịch thi cá nhân | PASS trong schema đã quan sát | Có mẫu thật và kiểm chứng Java; kế hoạch thi chung chưa có mẫu |
+| Lưu lịch thi | BLOCKED_PARTIAL | Chưa nối được đến một lần học thật của `StudentCourse` |
+
+`VERIFIED` trong phần này nghĩa là đã kiểm tra trực tiếp hành vi được nói tới. `OBSERVED` là điều thấy trong mẫu hoặc mã frontend, chưa đủ để suy rộng. `UNKNOWN` là chưa biết; `BLOCKED` là thiếu bằng chứng bắt buộc để làm bước tiếp theo. Không có thiết kế `PROPOSED` nào được tính như tính năng đã chạy.
+
+### Lịch học: đã tìm được đường nối đến môn
+
+Nguồn hỗ trợ nhỏ được tìm thấy là màn hình **Tra cứu kết quả đăng ký**, không phải import toàn bộ điểm hoặc chương trình học. Frontend gọi danh sách kỳ, kế hoạch đăng ký của tài khoản, rồi kết quả đăng ký theo bộ lọc đó. Chỉ mở phần tra cứu và lịch chi tiết của lớp đã đăng ký; không bấm xác nhận đăng ký, đổi lớp, điểm danh hoặc sửa dữ liệu trường.
+
+Trong mẫu, 4 mục lịch của một tuần nối được theo ID lớp tới 3 hàng kết quả đăng ký. Các hàng đăng ký có `DAOTAO_HOCPHAN_ID`, `DAOTAO_HOCPHAN_MA`, `DAOTAO_HOCPHAN_TEN`. Đây là bằng chứng tốt hơn ghép bằng tên môn: tên có thể trùng hoặc đổi, còn phép nối này dùng ID nguồn. Lịch chi tiết một lớp cũng có `IDHOCPHAN` khớp ID môn trong kết quả đăng ký.
+
+Tuy nhiên, chưa có tín chỉ riêng của từng môn từ nguồn hỗ trợ này. `SOTINCHIDADANGKY` được frontend dùng làm tổng tín chỉ đã đăng ký, không được lấy làm `Course.credits` cho từng hàng. Chưa tạo `Course` hoặc thêm mapper lưu môn khi thiếu dữ liệu bắt buộc. Không dùng tên môn, mã băm của tên hay mã buổi học để thay mã môn.
+
+### Vì sao chưa map được học kỳ?
+
+Danh sách kỳ có `ID` và nhãn `THOIGIAN` dạng năm–năm–số. Nhãn này chưa giải thích đầy đủ quan hệ giữa năm học, học kỳ và đợt đào tạo.
+
+Quan trọng hơn, trong hai phản hồi kết quả đăng ký đã kiểm tra, bộ lọc kỳ có giá trị nhưng `DAOTAO_THOIGIANDAOTAO_ID` trong các hàng **không bằng ID kỳ đã chọn**. ID trên hàng cũng không xuất hiện trong danh sách kỳ đăng ký hoặc danh sách kỳ thi đã lấy. Đây là bằng chứng cho thấy không thể đơn giản chép mã bộ lọc vào bản ghi rồi coi các khái niệm đó tương đương. Chưa kết luận đây là quan hệ cha–con, một đợt học riêng hay cách xử lý bộ lọc của nguồn.
+
+Vì vậy, `Semester.Identifier(academicYearStart, termCode)` chưa được tạo. Không tách nhãn hiển thị rồi tự gọi phần cuối là học kỳ; cũng không suy kỳ từ tháng diễn ra lịch. `ExamPeriod` mới chỉ giữ mã và nhãn của **phạm vi tra cứu nguồn**, không phải học kỳ AMS.
+
+### ID lớp và ID từng buổi: phát hiện làm thay đổi hướng lưu
+
+| Trường | Phạm vi quan sát được | Độ tin cậy và giới hạn |
+| --- | --- | --- |
+| `IDLOPHOCPHAN` | Frontend dùng khi hỏi lịch/điểm danh theo lớp; khớp mã lớp trong mẫu đăng ký | OBSERVED; chưa có cam kết scope toàn hệ thống |
+| `DANGKY_LOPHOCPHAN_ID` | Xuất hiện trong lịch, kết quả đăng ký và request lịch chi tiết lớp | VERIFIED phép nối trong mẫu; chưa coi là ID của một lần học |
+| Hai ID lớp ở trên | Bằng nhau trong mẫu lịch đã đọc | Không gộp hai trường hoặc suy rằng mọi phản hồi đều như vậy |
+| `IDLICHHOC` | Một giá trị xuất hiện ở nhiều ngày trong khoảng 28 ngày | VERIFIED không phải khóa duy nhất cho một buổi trong mẫu này |
+| `ID` của thời khóa biểu | Đã thay đổi qua reload ở Phase 3 | Tiếp tục loại khỏi phương án identity |
+
+Mẫu 28 ngày có 14 mục lịch; 4 giá trị `IDLICHHOC` được dùng ở nhiều ngày khác nhau. Ví dụ giả định: nếu cùng mã X xuất hiện vào thứ Hai của hai tuần, lưu cả hai vào một `ClassSession` theo X sẽ làm buổi sau ghi đè buổi trước. Đây là lỗi dữ liệu ngay cả khi phòng và giờ chưa thay đổi.
+
+Do đó, không nâng `identityScope` lên `PROVISIONAL_OCCURRENCE`. Điều kiện để dùng mức này là phải chứng minh scope một buổi; bằng chứng mới chưa đáp ứng điều kiện đó. Giữ `UNVERIFIED` và giữ riêng các mục trong observation, kể cả khi chúng có cùng mã nguồn. Một regression test với dữ liệu tổng hợp kiểm tra trường hợp lặp ID qua hai ngày.
+
+Lịch chi tiết lớp trả 7 hàng với ngày/range và ID môn nhưng không có `IDLICHHOC`, nên nguồn này chưa giải quyết được identity. Cũng không ghép ID với ngày/giờ/phòng để làm khóa lâu dài: khi một buổi chuyển ngày, cách ghép đó lại tạo bản ghi mới. Chưa có bằng chứng tự nhiên về một buổi bị đổi giờ/phòng; không chủ động sửa lịch trường để thử.
+
+### Lịch thi: nguồn riêng đã được kiểm chứng
+
+Danh sách kỳ thi trả 17 lựa chọn. Trong lượt nghiên cứu ban đầu, 4 kỳ đầu đã kiểm tra đều có hai bảng rỗng; kỳ thứ năm có 6 bản ghi cá nhân và bảng kế hoạch chung rỗng. Đây là các kỳ do chính tài khoản được đăng nhập nhìn thấy, không phải thử ID của người khác.
+
+Luồng đã triển khai:
+
+1. `fetchExamPeriods` lấy các kỳ có sẵn cho kết nối của user hiện tại.
+2. `fetchExams` đọc lại danh sách đó, kiểm tra mã kỳ yêu cầu thuộc danh sách và dùng nhãn từ nguồn.
+3. Gọi API lịch thi với người học lấy từ phiên mã hóa, mã kỳ đã kiểm tra và bộ lọc môn rỗng như request thật.
+4. Kiểm tra toàn bộ bảng cá nhân, rồi mới trả `ExamObservation`.
+
+API trả object gồm `rsLichThiCaNhan` và `rsKeHoachThiChung`, không phải một mảng lịch duy nhất. Bảng chung mới chỉ quan sát được khi rỗng. Nếu bảng này có phần tử, client hiện trả `UNEXPECTED_SCHEMA` cho cả lượt đọc: không đoán cấu trúc, không âm thầm bỏ bảng rồi báo đã đọc hết. Cần một mẫu hợp lệ của chính tài khoản trước khi bổ sung bộ đọc kế hoạch chung.
+
+| Trường trong mẫu cá nhân | Cách dùng | Điều không được suy ra |
+| --- | --- | --- |
+| `QLSV_NGUOIHOC_ID` | Phải khớp người học của phiên | Không nhận owner do phía gọi tự chọn |
+| `IDLICHHOC` | Giữ làm candidate ID, scope UNVERIFIED | Không kế thừa kết luận identity của lịch học hoặc coi ổn định khi đổi giờ |
+| `MAHOCPHAN`, `TENHOCPHAN` | Mã và tên môn trong observation | Chưa có ID môn nguồn và tín chỉ để tạo Course hoàn chỉnh |
+| `LANTHI` | Số nguyên dương, giữ riêng là lần thi | Không phải `StudentCourse.attemptNumber`, tức lần học |
+| `CATHI` | Chuỗi mô tả ca thi từ nguồn | Không dùng làm thời lượng hoặc lần học |
+| `NGAYHOC` | Ngày theo `dd/MM/uuuu`, parse nghiêm ngặt | Không chấp nhận ngày không tồn tại hoặc đổi thứ tự ngày/tháng |
+| `GIOBATDAU`, `PHUTBATDAU` | Giờ bắt đầu bắt buộc, số nguyên hợp lệ | Không đổi giờ địa phương thành UTC bằng cách giữ nguyên con số |
+| `GIOKETTHUC`, `PHUTKETTHUC` | Cùng có hoặc cùng thiếu; nếu có phải sau giờ bắt đầu | Không tự đặt thời lượng khi thiếu |
+| `PHONGHOC_TEN` | Phòng, được phép trống | Không đưa vào khóa định danh |
+| `IDLOPHOCPHAN`, `DANGKY_LOPHOCPHAN_ID` | Đều null trong mẫu thi đã đọc | Không tạo lớp/lần học từ nhãn `DANGKY_LOPHOCPHAN_TEN` |
+
+Các giờ trong mẫu được nguồn ghi dưới dạng số thập phân nguyên, chẳng hạn `7.0`; mapper chấp nhận giá trị nguyên chính xác, từ chối `7.5` hoặc chuỗi `"7"`. Múi giờ luôn là `Asia/Ho_Chi_Minh`; observation chứa `Instant` đã chuyển đổi. Không lấy tên/ID sinh viên, số báo danh, người tạo hoặc thời điểm cập nhật vào observation vì use case hiện không cần.
+
+Chưa xác minh trường riêng cho hình thức thi hoặc trạng thái hủy, nên không suy từ nhãn lớp và không tạo trạng thái hủy giả. Mã học kỳ chỉ nằm trong request, chưa có trường semester đã hiểu semantics trên item. Có mã môn và lần thi vẫn chưa đủ nối đến `StudentCourse`: một người có thể học lại cùng môn, và một lần học có thể có nhiều lần thi. Phase 4C không tạo lần học thay thế để vượt ràng buộc `Exam → StudentCourse`.
+
+### Tham số và nguồn hỗ trợ để tra cứu tiếp
+
+Các đường dẫn dưới đây được quan sát từ request thật hoặc đọc từ mã chức năng tương ứng, không tìm bằng cách thử đoán endpoint. Tất cả nằm trên host portal đã khóa ở tầng HTTP.
+
+| Mục đích | Đường dẫn POST |
+| --- | --- |
+| Kỳ thi | `/sinhvienapi3/api/SV_ThongTin_MH/DSA4BRIVKS4oBiggLw0oIikVKSgP` |
+| Lịch thi riêng | `/sinhvienapi3/api/SV_ThongTin_MH/DSA4BRINKCIpFSkoHgokCS4gIikVKSgP` |
+| Kỳ đăng ký của tài khoản | `/dangkyhocapi3/api/DKH_ThongTin_MH/DSA4FSkuKAYoIC8FIC8mCjgCIA8pIC8P` |
+| Kế hoạch đăng ký của tài khoản | `/dangkyhocapi3/api/DKH_ThongTin_MH/DSA4BRIKJAkuICIpBSAvJgo4AiAPKSAv` |
+| Kết quả đăng ký | `/dangkyhocapi3/api/DKH_Chung_MH/DSA4CiQ1EDQgBSAvJgo4DS4xCS4iESkgLwPP` |
+| Lịch chi tiết lớp đã đăng ký | `/dangkyhocapi3/api/DKH_Chung_MH/DSA4DSgiKRU0IC8VKSQuDS4xCS4iESkgLwPP` |
+
+Hai request thi được đưa vào production client; các request đăng ký chỉ dùng nghiên cứu correlation trong phase này, chưa thành capability/import mới.
+
+Request kỳ thi có `action`, `func=pkg_congthongtin_hssv_thongtin.LayDSThoiGianLichThi`, `iM`, `strNguoiThucHien_Id`, `strChucNang_Id`. Request lịch thi dùng `func=pkg_congthongtin_hssv_thongtin.LayDSLichThi_KeHoachThi` và thêm `strQLSV_NguoiHoc_Id`, `strDaoTao_ThoiGianDaoTao_Id`, `strDaoTao_HocPhan_Id`. Không nhận arbitrary URL hoặc function từ application.
+
+Các request đã kiểm tra không có page index/page size, `Pager` trả null. Điều này **chưa chứng minh nguồn trả đủ mọi bản ghi**. Cả lịch học và thi vẫn có `completeness=UNKNOWN`; không thêm vòng phân trang giả. Client giới hạn 256 kỳ, 10.000 mục thi, kích thước response và timeout. Vượt giới hạn hoặc một item sai làm cả lượt đọc thất bại, không cắt bớt rồi trả thành công.
+
+### Tương thích phiên mã hóa và ownership
+
+Mã chức năng lịch thi khác mã lịch học trong request thật. Payload phiên bản 2 thêm ngữ cảnh này; constructor cũ vẫn tạo được phiên không có ngữ cảnh thi. Decoder nhận cả phiên bản 1 và 2, từ chối phiên bản lạ hoặc byte thừa.
+
+Phiên bản payload và phiên bản lớp bảo vệ mã hóa được tách rõ. AAD tiếp tục dùng phiên bản 1 như 4B để ciphertext cũ vẫn giải mã được; `encryption_key_version` và khóa không đổi. Có test dựng ciphertext theo đúng format/AAD cũ rồi đọc bằng code mới. Không có migration dữ liệu phiên, không tự mã hóa lại bản ghi cũ, không triển khai xoay khóa.
+
+Phiên thiếu ngữ cảnh thi trả `CONNECTION_UNAVAILABLE` khi gọi khả năng thi; đọc hồ sơ và lịch vẫn hoạt động. Đây không phải bằng chứng token hết hạn, nên không chuyển kết nối sang `RECONNECTION_REQUIRED`. Muốn bổ sung ngữ cảnh phải cấp lại phiên qua luồng nội bộ có kiểm soát, vẫn kiểm tra ràng buộc cùng tài khoản nguồn.
+
+`AcademicPortalClient` chỉ thêm `fetchExamPeriods` và `fetchExams`, trả các kiểu chuẩn hóa. Adapter kiểm tra user ACTIVE, cặp user/kết nối và trạng thái kết nối trước khi giải mã. Mỗi item thi phải khớp learner của phiên. Không có controller nhận token/cookie, không thay Spring Security/session/CSRF, không mở UI kết nối production.
+
+### Database, kiểm thử và đối chiếu phạm vi
+
+Không thêm migration, source mapping table, `ScheduleImportService` hoặc `ExamImportService`. Schema vẫn ở V6. Các bảng domain đã có không bị sửa để chấp nhận môn/học kỳ/lần học giả. Do chưa persist lịch, các ca import lần đầu/lặp/đồng thời/cập nhật cùng UUID của lịch chưa thể được đánh dấu đạt; test idempotency/concurrency/rollback của hồ sơ 4B vẫn chạy để bảo vệ phần đã hoàn thành.
+
+Kiểm thử mới dùng fixture tổng hợp cho ngày/giờ, owner, cấu trúc hai bảng, kỳ không thuộc danh sách, mã môn thiếu, số bản ghi quá giới hạn và việc không bỏ qua item sai. HTTP loopback kiểm tra request đúng, thành công/rỗng, nghiệp vụ lỗi, 401, redirect login, timeout, oversized và giải mã lỗi. Integration test với PostgreSQL/Redis kiểm tra quyền sở hữu khả năng thi, phiên thiếu ngữ cảnh và việc lỗi nguồn giữ nguyên hồ sơ/ciphertext; chỉ SESSION_EXPIRED yêu cầu kết nối lại.
+
+Lượt Java live ngày 24/09/2026 dùng đúng `PhenikaaHttpClient` và phiên đã đi qua `PhenikaaSessionCipher`, không gọi hàm giải mã của frontend thay cho code Java. Kết quả metadata: `http=true`, `decoded=true`, `mapped=true`, 6 lịch thi khớp số lượng trình duyệt, 4 mục lịch học, `encryptedSessionRoundTrip=true`, `persistenceAttempted=false`. Không có dữ liệu học vụ thật được ghi vào database trong lượt này. Các phản hồi rỗng cũng đã được quan sát trên portal; không suy chúng thành yêu cầu xóa.
+
+Helper kiểm chứng nằm ngoài repository. Phiên được bàn giao một lần qua loopback bằng AES-GCM, khóa bàn giao được bọc bằng RSA-OAEP; fingerprint khóa công khai được đối chiếu trước khi gửi. Không truyền credential qua command line, không ghi request/response thật, HAR hoặc screenshot vào file. Đây chỉ là dụng cụ kiểm chứng local, không phải một phần của ứng dụng.
+
+Lượt `verify` đầu chưa chạy được integration test vì Docker Engine chưa sẵn sàng. Sau khi khởi động Docker và cho tiến trình test truy cập engine, toàn bộ integration test đã chạy thành công; không tắt test hoặc đổi cấu hình để bỏ qua Docker. Kết quả cuối cùng phải đọc cùng commit được bàn giao và CI tương ứng.
+
+Kết quả local cuối ngày 24/09/2026: `mvnw.cmd verify` đạt **119 unit/HTTP test và 72 integration test**, không thất bại, lỗi hoặc bỏ qua. Flyway tạo schema sạch và Hibernate validate thành công. Frontend không thay đổi; workflow CI hiện có vẫn chạy lint, typecheck, unit, build và E2E frontend cùng backend verify khi push nhánh review.
+
+Đã đối chiếu 16 file code/docs thay đổi và 40 file báo cáo/log với các giá trị phiên, mã người học và dữ liệu nguồn đang có trong bộ nhớ, không thấy khớp. Đây là kiểm tra các giá trị đã biết, không thay thế việc review nội dung. Profile Chrome nghiên cứu và helper đã được xóa, bộ nhớ phiên công cụ đã được giải phóng. Không có helper, browser profile, log hoặc test report nào được stage vào Git.
+
+### Việc còn cần bằng chứng trước khi lưu lịch
+
+- Khóa từng buổi học không đổi khi chuyển ngày/giờ; không chỉ một ID dùng cho nhiều ngày.
+- Quan hệ giữa kỳ được chọn và thời gian đào tạo trên hàng đăng ký; ý nghĩa năm học/học kỳ/đợt.
+- Tín chỉ từng môn từ nguồn phù hợp, không phải tổng tín chỉ của lượt đăng ký.
+- Enrollment/lần học thật để liên kết kỳ thi, và scope/stability của candidate ID thi.
+- Mẫu kế hoạch thi chung nếu cần hỗ trợ phần đó; phân trang/độ đầy đủ, trạng thái hủy và lifecycle phiên vẫn UNKNOWN.
+
+Chưa bắt đầu import điểm, GPA, toàn bộ curriculum, prerequisites hoặc grading policy. Không có change detection, thông báo thay đổi, Google Calendar, email hoặc đăng nhập production mới. Kết thúc 4C tại các giới hạn trên để review, không tự chuyển sang Phase 5.

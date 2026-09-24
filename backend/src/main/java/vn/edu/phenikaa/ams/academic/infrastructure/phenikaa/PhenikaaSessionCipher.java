@@ -15,6 +15,8 @@ import javax.crypto.spec.SecretKeySpec;
 public final class PhenikaaSessionCipher implements AutoCloseable {
     private static final int NONCE_BYTES = 12;
     private static final int MAX_PLAINTEXT_BYTES = 200_000;
+    // The authenticated envelope stays v1 even when the encrypted payload gains a capability.
+    private static final int ENVELOPE_VERSION = 1;
     private final byte[] key;
     private final int keyVersion;
     private final SecureRandom random = new SecureRandom();
@@ -87,7 +89,7 @@ public final class PhenikaaSessionCipher implements AutoCloseable {
     private Cipher cipher(int mode, byte[] nonce, UUID connectionId, UUID userId, String purpose) throws GeneralSecurityException {
         Cipher cipher = Cipher.getInstance("AES/GCM/NoPadding");
         cipher.init(mode, new SecretKeySpec(key, "AES"), new GCMParameterSpec(128, nonce));
-        String context = "AMS:phenikaa:" + purpose + ":" + PhenikaaSessionMaterial.FORMAT_VERSION
+        String context = "AMS:phenikaa:" + purpose + ":" + ENVELOPE_VERSION
                 + ":" + keyVersion + ":" + Objects.requireNonNull(connectionId) + ":" + Objects.requireNonNull(userId);
         cipher.updateAAD(context.getBytes(StandardCharsets.UTF_8));
         return cipher;
