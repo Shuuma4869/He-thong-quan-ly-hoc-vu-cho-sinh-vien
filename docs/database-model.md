@@ -137,3 +137,13 @@ Hai cột mã hóa dùng AAD có mục đích riêng và ràng buộc user/kết
 `StudentProfile` không thêm cột ở phase này. Lượt nhập dùng `user_id` từ kết nối đã kiểm tra, tạo hồ sơ nếu chưa có và giữ UUID khi nhập lại. Hiện chỉ cập nhật mã sinh viên/tên ngành đã xác minh; giá trị nguồn chưa biết không xóa trường cũ. User được khóa trong transaction để nhập lần đầu đồng thời không tạo trùng.
 
 Test V5 → V6 kiểm tra hồ sơ cũ còn nguyên và không sinh seed kết nối. Testcontainers cũng chạy schema sạch với Hibernate validate, constraint owner/unique/ciphertext, nhập lặp/đồng thời, hết phiên, lỗi nguồn, lỗi toàn vẹn và rollback khi ghi thất bại. Chưa có migration source mapping hoặc schedule import vì gate quan hệ nguồn chưa đạt.
+
+## Đối chiếu nguồn trong Phase 5A
+
+Schema vẫn ở V6. Không thêm source mapping table hoặc migration chưa dùng thật. Bộ đọc điểm đã tìm được ID môn, tín chỉ riêng từng môn và năm học/học kỳ có ý nghĩa rõ hơn nhãn bộ lọc, nhưng chưa vượt qua điều kiện lưu `StudentCourse`.
+
+Ràng buộc hiện tại của `student_course` là unique theo hồ sơ + môn + số lần học. Trong mẫu nguồn, nhiều đăng ký khác nhau có cùng môn và cùng `LANHOC`; một số không thể phân biệt chỉ bằng học kỳ. Chưa biết đó là nhiều lớp của một lần học, dữ liệu quá trình chưa chốt hay một phạm vi đếm khác. Không nới unique, ghép hàng hoặc tự đánh số lại chỉ để insert được.
+
+Ví dụ tổng hợp: hai đăng ký A/B cùng môn TEST101 đều báo lần học 1. Có hai UUID đăng ký không có nghĩa chắc chắn có hai lần học; cũng không có nghĩa chúng phải được gộp thành một. Cần xác minh quan hệ trước, rồi mới quyết định một lần học có một hay nhiều ánh xạ đăng ký. Observation hiện giữ cả hai, không ghi vào domain.
+
+Trạng thái “Học lại” và tín chỉ đạt riêng cho từng lần học cũng cần quyết định trước khi import. Chưa đổi enum `AcademicResult`, chưa sửa nullability của `credits_earned`, không dùng tín chỉ môn để điền thay tín chỉ đã tích lũy. Toàn bộ dữ liệu nguồn mới dừng ở observation trong bộ nhớ; [kết quả Phase 5A](phenikaa-integration.md#phase-5a-môn-học-học-kỳ-lần-học-và-kết-quả) mô tả bằng chứng và phần chưa rõ.
