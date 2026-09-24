@@ -77,6 +77,59 @@ class PhenikaaConnectionIT {
         }
     }
 
+    private AcademicPortalClient.StudentConnectionId connectWithAcademics() {
+        try (var material = new PhenikaaSessionMaterial("Bearer synthetic-secret", "", "synthetic-response-key",
+                "synthetic-learner", "synthetic-profile-function", "synthetic-schedule-function", null, "synthetic-academic-function")) {
+            return portal.connect(owner.getId(), material);
+        }
+    }
+
+    @Test void academicCapabilityChecksOwnerBeforeReadingAndNeverPersistsObservations() {
+        var connection = connectWithAcademics();
+        var program = new AcademicProgram("synthetic-program", "Chương trình giả định");
+        var period = new AcademicPeriod("synthetic-period", "Kỳ giả định");
+        var observation = new AcademicRecordObservation(program, java.util.List.of());
+        when(http.fetchAcademicPrograms(any())).thenReturn(java.util.List.of(program));
+        when(http.fetchAcademicPeriods(any())).thenReturn(java.util.List.of(period));
+        when(http.fetchAcademicRecords(any(), eq(program))).thenReturn(observation);
+        clearInvocations(http);
+        assertThatThrownBy(() -> portal.fetchAcademicPrograms(other.getId(), connection)).hasMessage("CONNECTION_UNAVAILABLE");
+        assertThatThrownBy(() -> portal.fetchAcademicPeriods(other.getId(), connection)).hasMessage("CONNECTION_UNAVAILABLE");
+        assertThatThrownBy(() -> portal.fetchAcademicRecords(other.getId(), connection, program)).hasMessage("CONNECTION_UNAVAILABLE");
+        verifyNoInteractions(http);
+        assertThat(portal.fetchAcademicPrograms(owner.getId(), connection)).containsExactly(program);
+        assertThat(portal.fetchAcademicPeriods(owner.getId(), connection)).containsExactly(period);
+        assertThat(portal.fetchAcademicRecords(owner.getId(), connection, program)).isEqualTo(observation);
+        assertThat(profiles.findByUserId(owner.getId())).isEmpty();
+        jdbc.update("update app_user set account_status = 'DISABLED' where id = ?", owner.getId());
+        clearInvocations(http);
+        assertThatThrownBy(() -> portal.fetchAcademicRecords(owner.getId(), connection, program)).hasMessage("CONNECTION_UNAVAILABLE");
+        verifyNoInteractions(http);
+    }
+
+    @Test void legacySessionDoesNotGainAcademicCapabilityOrLoseItsProfileCapability() {
+        var connection = connect();
+        clearInvocations(http);
+        assertThatThrownBy(() -> portal.fetchAcademicPeriods(owner.getId(), connection)).hasMessage("CONNECTION_UNAVAILABLE");
+        verifyNoInteractions(http);
+        assertThat(portal.status(owner.getId()).status()).isEqualTo(PhenikaaConnection.Status.CONNECTED);
+        assertThat(imports.importCurrentProfile(owner.getId())).isNotNull();
+    }
+
+    @ParameterizedTest @EnumSource(PhenikaaClientException.Code.class)
+    void academicFailurePreservesExistingCourseAndOnlyExpiryRequiresReconnection(PhenikaaClientException.Code code) {
+        var connection = connectWithAcademics();
+        UUID profile = imports.importCurrentProfile(owner.getId());
+        UUID course = UUID.randomUUID();
+        jdbc.update("insert into course(id,profile_id,code,name,credits) values (?,?,'TEST101','Môn giả định',3)", course, profile);
+        var program = new AcademicProgram("synthetic-program", "Chương trình giả định");
+        when(http.fetchAcademicRecords(any(), eq(program))).thenThrow(new PhenikaaClientException(code));
+        assertThatThrownBy(() -> portal.fetchAcademicRecords(owner.getId(), connection, program)).hasMessage(code.name()).hasNoCause();
+        assertThat(jdbc.queryForObject("select id from course where profile_id = ?", UUID.class, profile)).isEqualTo(course);
+        assertThat(portal.status(owner.getId()).reconnectionRequired()).isEqualTo(code == PhenikaaClientException.Code.SESSION_EXPIRED);
+        assertThat(portal.status(owner.getId()).lastFailureCode().name()).isEqualTo(code.name());
+    }
+
     @Test void examCapabilityUsesOwnedEncryptedContextAndDoesNotCreateAcademicRecords() {
         var connection = connectWithExams();
         var period = new ExamPeriod("synthetic-period", "Kỳ giả định");

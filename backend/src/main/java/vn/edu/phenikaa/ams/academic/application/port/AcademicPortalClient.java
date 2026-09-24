@@ -17,6 +17,13 @@ public interface AcademicPortalClient {
 
     ExamObservation fetchExams(UUID currentUserId, StudentConnectionId connectionId, ExamPeriod period);
 
+    List<AcademicProgram> fetchAcademicPrograms(UUID currentUserId, StudentConnectionId connectionId);
+
+    List<AcademicPeriod> fetchAcademicPeriods(UUID currentUserId, StudentConnectionId connectionId);
+
+    AcademicRecordObservation fetchAcademicRecords(UUID currentUserId, StudentConnectionId connectionId,
+                                                    AcademicProgram program);
+
     record StudentConnectionId(UUID value) {
         public StudentConnectionId { Objects.requireNonNull(value); }
     }

@@ -22,6 +22,9 @@ import vn.edu.phenikaa.ams.academic.application.port.ProfileObservation;
 import vn.edu.phenikaa.ams.academic.application.port.ScheduleObservation;
 import vn.edu.phenikaa.ams.academic.application.port.ExamObservation;
 import vn.edu.phenikaa.ams.academic.application.port.ExamPeriod;
+import vn.edu.phenikaa.ams.academic.application.port.AcademicProgram;
+import vn.edu.phenikaa.ams.academic.application.port.AcademicPeriod;
+import vn.edu.phenikaa.ams.academic.application.port.AcademicRecordObservation;
 import static vn.edu.phenikaa.ams.academic.infrastructure.phenikaa.PhenikaaClientException.Code.*;
 
 public final class PhenikaaHttpClient {
@@ -158,6 +161,58 @@ public final class PhenikaaHttpClient {
         var entries = new ArrayList<ExamObservation.Entry>();
         for (var item : personal) entries.add(PhenikaaExamItem.from(item, session.learnerId()).normalize());
         return new ExamObservation(period, PORTAL_ZONE, entries);
+    }
+
+    public List<AcademicProgram> fetchAcademicPrograms(PhenikaaSession session) {
+        var parameters = academicParameters(session, PhenikaaHttpTransport.ACADEMIC_PROGRAMS_PATH, "LayThongTinChuongTrinhHoc");
+        var data = PhenikaaAcademicRecords.boundedArray(readExamData(session, parameters, transport::readAcademicPrograms), 256);
+        var programs = new ArrayList<AcademicProgram>();
+        var ids = new HashSet<String>();
+        for (var row : data) {
+            if (!session.learnerId().equals(PhenikaaAcademicRecords.text(row, "QLSV_NGUOIHOC_ID", 256)))
+                throw new PhenikaaClientException(UNEXPECTED_SCHEMA);
+            var program = new AcademicProgram(PhenikaaAcademicRecords.text(row, "DAOTAO_TOCHUCCHUONGTRINH_ID", 128),
+                    PhenikaaAcademicRecords.text(row, "DAOTAO_CHUONGTRINH_TEN", 240));
+            if (!ids.add(program.sourceId())) throw new PhenikaaClientException(UNEXPECTED_SCHEMA);
+            programs.add(program);
+        }
+        return List.copyOf(programs);
+    }
+
+    public List<AcademicPeriod> fetchAcademicPeriods(PhenikaaSession session) {
+        var parameters = academicParameters(session, PhenikaaHttpTransport.ACADEMIC_PERIODS_PATH, "LayDSThoiGianLichHoc");
+        var data = PhenikaaAcademicRecords.boundedArray(readExamData(session, parameters, transport::readAcademicPeriods), 256);
+        var periods = new ArrayList<AcademicPeriod>();
+        var ids = new HashSet<String>();
+        for (var row : data) {
+            var period = new AcademicPeriod(PhenikaaAcademicRecords.text(row, "ID", 128),
+                    PhenikaaAcademicRecords.text(row, "THOIGIAN", 200));
+            if (!ids.add(period.sourceId())) throw new PhenikaaClientException(UNEXPECTED_SCHEMA);
+            periods.add(period);
+        }
+        return List.copyOf(periods);
+    }
+
+    public AcademicRecordObservation fetchAcademicRecords(PhenikaaSession session, AcademicProgram requestedProgram) {
+        Objects.requireNonNull(requestedProgram);
+        var program = fetchAcademicPrograms(session).stream()
+                .filter(item -> item.sourceId().equals(requestedProgram.sourceId())).findFirst()
+                .orElseThrow(() -> new PhenikaaClientException(UNEXPECTED_SCHEMA));
+        var parameters = academicParameters(session, PhenikaaHttpTransport.ACADEMIC_RECORDS_PATH, "KetQuaHocTapCaNhan");
+        parameters.put("strDaoTao_ChuongTrinh_Id", program.sourceId());
+        var data = readExamData(session, parameters, transport::readAcademicRecords);
+        var registrationParameters = academicParameters(session, PhenikaaHttpTransport.ACADEMIC_REGISTRATIONS_PATH,
+                "LayKetQuaDangKyHocCaNhan");
+        // The initial grades-page lookup uses an empty period filter. This is not a completeness guarantee.
+        registrationParameters.put("strDaoTao_ThoiGianDaoTao_Id", "");
+        var registrations = readExamData(session, registrationParameters, transport::readAcademicRegistrations);
+        return PhenikaaAcademicRecords.normalize(data, registrations, session.learnerId(), program);
+    }
+
+    private LinkedHashMap<String, Object> academicParameters(PhenikaaSession session, String path, String function) {
+        var parameters = examParameters(session, path.substring("/sinhvienapi3/api/".length()), function);
+        parameters.put("strQLSV_NguoiHoc_Id", session.learnerId());
+        return parameters;
     }
 
     private LinkedHashMap<String, Object> examParameters(PhenikaaSession session, String action, String function) {

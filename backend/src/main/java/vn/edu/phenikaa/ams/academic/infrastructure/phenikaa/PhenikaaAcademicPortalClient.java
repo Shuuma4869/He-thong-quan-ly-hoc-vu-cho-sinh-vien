@@ -82,6 +82,24 @@ public class PhenikaaAcademicPortalClient implements AcademicPortalClient {
         return material.exam();
     }
 
+    @Override public List<AcademicProgram> fetchAcademicPrograms(UUID userId, StudentConnectionId connectionId) {
+        return access(userId, connectionId, material -> http.fetchAcademicPrograms(academicSession(material)));
+    }
+
+    @Override public List<AcademicPeriod> fetchAcademicPeriods(UUID userId, StudentConnectionId connectionId) {
+        return access(userId, connectionId, material -> http.fetchAcademicPeriods(academicSession(material)));
+    }
+
+    @Override public AcademicRecordObservation fetchAcademicRecords(UUID userId, StudentConnectionId connectionId,
+                                                                    AcademicProgram program) {
+        return access(userId, connectionId, material -> http.fetchAcademicRecords(academicSession(material), program));
+    }
+
+    private static PhenikaaSession academicSession(PhenikaaSessionMaterial material) {
+        if (material.academic() == null) throw new AcademicPortalException(CONNECTION_UNAVAILABLE);
+        return material.academic();
+    }
+
     private <T> T access(UUID userId, StudentConnectionId id, Function<PhenikaaSessionMaterial, T> operation) {
         lockActiveUser(userId);
         var connection = connections.findByIdAndUserId(id.value(), userId)
