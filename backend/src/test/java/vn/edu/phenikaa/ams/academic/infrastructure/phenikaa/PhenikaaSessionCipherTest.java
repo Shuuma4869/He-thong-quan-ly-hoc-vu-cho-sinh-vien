@@ -48,7 +48,7 @@ class PhenikaaSessionCipherTest {
         java.util.Arrays.fill(legacy, (byte) 0);
     }
 
-    @Test void keepsExamContextSeparateInVersionTwoAndClosesIt() {
+    @Test void keepsExamContextSeparateAndClosesIt() {
         try (var cipher = new PhenikaaSessionCipher(randomKey(), 1);
              var original = new PhenikaaSessionMaterial("Bearer synthetic-secret", "", "synthetic-key", "synthetic-learner",
                      "synthetic-profile-function", "synthetic-schedule-function", "synthetic-exam-function")) {
@@ -57,6 +57,34 @@ class PhenikaaSessionCipherTest {
             assertThat(restored.schedule().functionId()).isEqualTo("synthetic-schedule-function");
             restored.close();
             assertThatThrownBy(() -> restored.exam().authorization()).isInstanceOf(IllegalStateException.class);
+        }
+    }
+
+    @Test void readsVersionTwoWithoutGrantingAcademicCapability() throws Exception {
+        byte[] encoded;
+        try (var buffer = new java.io.ByteArrayOutputStream(); var output = new java.io.DataOutputStream(buffer)) {
+            output.writeInt(2);
+            for (String value : new String[]{"Bearer synthetic-secret", "", "synthetic-key", "synthetic-learner",
+                    "synthetic-profile-function", "synthetic-schedule-function"}) output.writeUTF(value);
+            output.writeBoolean(true);
+            output.writeUTF("synthetic-exam-function");
+            encoded = buffer.toByteArray();
+        }
+        try (var decoded = PhenikaaSessionMaterial.decode(encoded)) {
+            assertThat(decoded.exam().functionId()).isEqualTo("synthetic-exam-function");
+            assertThat(decoded.academic()).isNull();
+        } finally { java.util.Arrays.fill(encoded, (byte) 0); }
+    }
+
+    @Test void encryptedVersionThreeKeepsAcademicContextDistinctAndClosesIt() {
+        try (var cipher = new PhenikaaSessionCipher(randomKey(), 1);
+             var original = new PhenikaaSessionMaterial("Bearer synthetic-secret", "", "synthetic-key", "synthetic-learner",
+                     "synthetic-profile-function", "synthetic-schedule-function", "synthetic-exam-function", "synthetic-academic-function")) {
+            var restored = cipher.decrypt(cipher.encrypt(original, connectionId, userId), 1, connectionId, userId);
+            assertThat(restored.academic().functionId()).isEqualTo("synthetic-academic-function");
+            assertThat(restored.exam().functionId()).isEqualTo("synthetic-exam-function");
+            restored.close();
+            assertThatThrownBy(() -> restored.academic().authorization()).isInstanceOf(IllegalStateException.class);
         }
     }
 
