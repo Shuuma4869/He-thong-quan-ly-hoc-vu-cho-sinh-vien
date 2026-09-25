@@ -18,6 +18,10 @@ public final class PhenikaaHttpTransport implements AutoCloseable {
     static final String PROFILE_PATH = "/sinhvienapi3/api/SV_Custom/DSA4FSkuLyYVKC8CKSgVKCQ1CS4SLgPP";
     static final String EXAM_PERIODS_PATH = "/sinhvienapi3/api/SV_ThongTin_MH/DSA4BRIVKS4oBiggLw0oIikVKSgP";
     static final String EXAMS_PATH = "/sinhvienapi3/api/SV_ThongTin_MH/DSA4BRINKCIpFSkoHgokCS4gIikVKSgP";
+    static final String ACADEMIC_PROGRAMS_PATH = "/sinhvienapi3/api/SV_ThongTin_MH/DSA4FSkuLyYVKC8CKTQuLyYVMygvKQkuIgPP";
+    static final String ACADEMIC_PERIODS_PATH = "/sinhvienapi3/api/SV_ThongTin_MH/DSA4BRIVKS4oBiggLw0oIikJLiIP";
+    static final String ACADEMIC_RECORDS_PATH = "/sinhvienapi3/api/SV_ThongTin_MH/CiQ1EDQgCS4iFSAxAiAPKSAv";
+    static final String ACADEMIC_REGISTRATIONS_PATH = "/sinhvienapi3/api/SV_ThongTin_MH/DSA4CiQ1EDQgBSAvJgo4CS4iAiAPKSAv";
     private final HttpClient client;
     private final URI baseUri;
     private final Duration responseTimeout;
@@ -65,6 +69,11 @@ public final class PhenikaaHttpTransport implements AutoCloseable {
     byte[] readExams(PhenikaaSession session, String encodedRequest) {
         return read(session, encodedRequest, EXAMS_PATH);
     }
+
+    byte[] readAcademicPrograms(PhenikaaSession session, String encoded) { return read(session, encoded, ACADEMIC_PROGRAMS_PATH); }
+    byte[] readAcademicPeriods(PhenikaaSession session, String encoded) { return read(session, encoded, ACADEMIC_PERIODS_PATH); }
+    byte[] readAcademicRecords(PhenikaaSession session, String encoded) { return read(session, encoded, ACADEMIC_RECORDS_PATH); }
+    byte[] readAcademicRegistrations(PhenikaaSession session, String encoded) { return read(session, encoded, ACADEMIC_REGISTRATIONS_PATH); }
 
     private byte[] read(PhenikaaSession session, String encodedRequest, String path) {
         if (encodedRequest == null || encodedRequest.length() > maxBytes) throw new PhenikaaClientException(RESPONSE_TOO_LARGE);

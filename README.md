@@ -4,7 +4,9 @@
 
 AMS hỗ trợ sinh viên theo dõi kết quả học tập, chương trình đào tạo, lịch học, lịch thi và kế hoạch tốt nghiệp tại một nơi. Hệ thống được thiết kế để đồng bộ dữ liệu mà chính tài khoản sinh viên có quyền xem, phát hiện thay đổi và chuyển các sự kiện do AMS quản lý sang Google Calendar.
 
-> Đã có tài khoản AMS, đăng nhập bằng session và cài đặt cá nhân, cùng domain/database học vụ chuẩn hóa. Phase 4B bổ sung kết nối Phenikaa mã hóa và nhập hồ sơ đúng tài khoản. Phase 4C đọc được lịch thi cá nhân qua API riêng, đã kiểm chứng bằng Java với nguồn thật. Lịch học và lịch thi **chưa được lưu vào domain**: còn thiếu ánh xạ học kỳ, từng buổi học và lần học. Chưa có giao diện kết nối Phenikaa; tính năng backend mặc định tắt. Google Calendar và email chưa được kết nối; dashboard vẫn là giao diện nền, không trình bày dữ liệu giả như dữ liệu production.
+AMS là dự án cá nhân, không phải hệ thống chính thức của Phenikaa University và không đại diện cho nhà trường. Các tích hợp chỉ làm việc với dữ liệu mà tài khoản người dùng được phép truy cập.
+
+> Đã có tài khoản AMS, đăng nhập bằng session, cài đặt cá nhân và domain/database học vụ. Phase 5A bổ sung bộ đọc kết quả học tập, đối chiếu môn, học kỳ và đăng ký của tài khoản. **Chưa nhập điểm vào domain** vì có nhiều đăng ký cùng môn/cùng số lần học, chưa xác định được cách gộp hoặc tách đúng. Lịch học và lịch thi cũng chưa được lưu. Chưa tính GPA, chưa có giao diện kết nối Phenikaa; tính năng backend mặc định tắt. Google Calendar và email chưa kết nối; dashboard vẫn là giao diện nền. Xem [kết quả và giới hạn Phase 5A](docs/phenikaa-integration.md#phase-5a-môn-học-học-kỳ-lần-học-và-kết-quả).
 
 ## Phạm vi chính
 

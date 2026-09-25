@@ -60,3 +60,17 @@ Phiên được cấp qua thao tác nội bộ có kiểm soát, chưa phải pr
 Payload phiên phiên bản 2 thêm ngữ cảnh lịch thi riêng; vẫn đọc được payload phiên bản 1. Phiên bản lớp bảo vệ AES-GCM/AAD vẫn là 1, không đổi khóa hay tự mã hóa lại bản ghi cũ. Thiếu ngữ cảnh lịch thi trả `CONNECTION_UNAVAILABLE` cho khả năng này, không làm hỏng khả năng đọc hồ sơ/lịch học. Cần cấp lại phiên qua quy trình nội bộ đã kiểm chứng để bổ sung ngữ cảnh; không suy từ mã chức năng lịch học.
 
 Hai phần lưu lịch học và lịch thi vẫn bị chặn bởi bằng chứng nguồn, không phải thiếu bảng domain. Chi tiết nằm trong [kết quả Phase 4C](phenikaa-integration.md#phase-4c-lịch-học-và-lịch-thi). Không thay đổi schema, không thêm repository ngoài use case hiện có.
+
+## Đọc kết quả học tập trong Phase 5A
+
+`AcademicPortalClient` thêm khả năng đọc chương trình của tài khoản, danh sách kỳ tra cứu và kết quả học tập. `AcademicProgram` và `AcademicPeriod` là bộ lọc nguồn; tên kỳ không được tự tách để tạo học kỳ AMS. `AcademicRecordObservation` chứa môn, năm học/học kỳ đã đối chiếu, ID đăng ký, số lần học nguồn báo, các điểm thành phần và kết quả cuối môn nếu có. Các kiểu này bất biến và không in dữ liệu học tập trong `toString`.
+
+Adapter kiểm tra chương trình thuộc tài khoản, rồi đọc kết quả và đăng ký học theo request đã quan sát trên UI. `PhenikaaAcademicRecords` đối chiếu toàn bộ phản hồi trước khi trả observation. ID danh sách học trong điểm là ID lớp: phải nối tiếp sang hàng đăng ký đúng người học/chương trình để lấy ID đăng ký thật. Một phép nối thiếu hoặc không duy nhất làm cả lượt đọc thất bại.
+
+Observation giữ mỗi đăng ký nguồn riêng và đặt tên `reportedLearningAttempt` để tránh hiểu đó là số lần học AMS đã xác nhận. `hasAmbiguousLearningAttempts()` phát hiện nhiều đăng ký cùng ID môn và cùng số lần học nguồn báo. Đây là dữ liệu hợp lệ nhưng chưa đủ rõ để lưu, không phải lý do bỏ bớt hàng. Giá trị false cũng không phải một cam kết rằng mọi điều kiện import đã đạt.
+
+Chưa có `AcademicRecordImportService`, source mapping table hoặc migration mới. Lượt kiểm chứng đầy đủ phát hiện xung đột trên; phần persistence thử nghiệm chưa commit đã được bỏ. Chỉ đọc observation không thay đổi `Course`, `Semester`, `StudentCourse` hoặc `AcademicResult`. Không mở API nhận user ID, learner ID hay credential.
+
+Điểm thành phần không biến thành kết quả cuối môn. Outcome chuẩn hóa giữ riêng PASSED, FAILED và RETAKE_REQUIRED theo mã nguồn đã quan sát; chưa ép chúng vào enum domain hoặc tự tính tín chỉ đạt. Một đăng ký có nhiều kết quả cuối cũng chưa có quy tắc chọn hợp lệ; client hiện dừng thay vì tự chọn điểm cao nhất/mới nhất.
+
+Payload phiên bản 3 thêm mã chức năng học tập riêng, vẫn đọc được phiên bản 1 và 2; AAD/khóa không đổi. Phiên cũ thiếu ngữ cảnh học tập chỉ không dùng được khả năng mới, không bị đánh dấu hết hạn. Không có scheduler, distributed lock, importer chương trình đầy đủ, importer lịch hoặc change detection trong 5A.
