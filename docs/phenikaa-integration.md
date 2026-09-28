@@ -1,6 +1,6 @@
 # Kết nối AMS với cổng QLĐT Phenikaa
 
-> Các phần Phase 3/4A/4B được giữ theo thời điểm kiểm tra. Kết quả mới nhất ở [Phase 4C](#phase-4c-lịch-học-và-lịch-thi): đã đọc lịch thi cá nhân bằng Java qua API riêng, nhưng chưa đủ cơ sở lưu lịch học/lịch thi vào domain. Đáng chú ý, `IDLICHHOC` lặp qua nhiều ngày, không phải khóa duy nhất cho từng buổi. Chưa có giao diện kết nối tài khoản Phenikaa trong AMS.
+> Các phần Phase 3–5A được giữ theo thời điểm kiểm tra. Kết quả mới nhất ở [Phase 5B](#phase-5b-chương-trình-đào-tạo-danh-mục-môn-và-nhóm-môn): đã đọc và nhập chương trình, môn và nhóm đủ bằng chứng; chưa lưu tiên quyết, điểm hoặc lịch. `IDLICHHOC` vẫn không phải khóa duy nhất cho từng buổi. Chưa có giao diện kết nối tài khoản Phenikaa trong AMS.
 
 Tài liệu này ghi lại những gì đã kiểm tra trên cổng QLĐT Phenikaa trong ngày 18–20/09/2026 và những việc cần làm rõ trước khi viết phần kết nối cho AMS. Người tiếp tục phát triển có thể đọc phần đầu để hiểu hướng xử lý, rồi tra đường dẫn API và tên trường ở các phụ lục.
 
@@ -969,3 +969,164 @@ Chưa có test import điểm lần đầu/lặp/đồng thời/rollback databas
 4. Cây kỳ nguồn và quan hệ với kỳ thi/đăng ký. Mẫu khớp của một endpoint không phủ định mẫu khác của 4C.
 
 Chưa bắt đầu Phase 5B hoặc Phase 6; không import full curriculum, prerequisites, GPA, lịch, change detection, Google Calendar hoặc email. Kết thúc 5A ở phần đọc/đối chiếu đã kiểm chứng để review các giới hạn trên.
+
+## Phase 5B: chương trình đào tạo, danh mục môn và nhóm môn
+
+### Kết quả chính và cách đọc phần này
+
+Phase 5B đã có bộ đọc Java và dịch vụ nhập những phần curriculum đủ bằng chứng. “Curriculum” ở đây là chương trình đào tạo gồm danh mục môn và yêu cầu nhóm, không phải danh sách các môn sinh viên đã học. Một môn có trong chương trình không đồng nghĩa sinh viên đã đăng ký hoặc hoàn thành môn đó.
+
+Lượt kiểm chứng local ngày 26/09/2026 đọc được một lựa chọn chương trình, 88 môn và 14 nhóm. Có 85 môn nối được tới nhóm: 42 bắt buộc và 43 tự chọn. Nhập hai lần giữ nguyên UUID của chương trình, môn, nhóm, liên kết và các bảng ánh xạ. Ba môn chưa xác minh được nhóm chỉ được giữ trong danh mục Course, không tự gán loại để tạo CurriculumCourse.
+
+Kết quả tổng thể là **PARTIAL**, không phải lỗi insert đã được che bằng dữ liệu giả. Phần nhập đã xác minh hoạt động, nhưng chưa biết phiên bản chương trình, chưa xác nhận lựa chọn hiện hành của hồ sơ và chưa lưu được điều kiện tiên quyết có ngưỡng điểm. Các blocker của điểm/lần học ở Phase 5A vẫn còn nguyên.
+
+Trong phần này, **VERIFIED** là điều đã đối chiếu giữa request, dữ liệu và hành vi UI/code; **OBSERVED** là đã thấy trong mẫu nhưng chưa đủ để khái quát. **UNKNOWN** nghĩa là chưa biết, không phải giá trị rỗng hoặc 0. **BLOCKED** đánh dấu phần chưa được triển khai vì thiếu bằng chứng hoặc model chưa biểu diễn đúng. **PROPOSED** chỉ là hướng cần review, không phải tính năng đã có.
+
+### Chương trình nào thuộc tài khoản?
+
+Selector của màn hình Chương trình học gọi `pkg_dangkyhoc_chung.LayDSChuongTrinh`. **VERIFIED:** mỗi lựa chọn có ID người học khớp tài khoản; giá trị UI dùng để gọi các API tiếp theo là `DAOTAO_TOCHUCCHUONGTRINH_ID`. Trường `ID` của chính hàng selector là một ID khác, không được dùng thay.
+
+Adapter đọc lại selector trước mỗi lần lấy curriculum. ID yêu cầu phải nằm trong danh sách của tài khoản; tên/mã do bên gọi truyền không thay thế metadata vừa đọc từ nguồn. UUID của AMS vẫn được tạo nội bộ, còn ID tổ chức chương trình được lưu trong bảng ánh xạ.
+
+Mẫu có mã khóa đào tạo qua `DAOTAO_KHOADAOTAO_MA`, nên lưu được cohort. Chưa thấy revision, thời điểm hiệu lực hoặc lịch sử phiên bản có ý nghĩa rõ. Không tách năm từ tên hiển thị, không gán revision `v1`, không dùng ID nguồn giả làm số phiên bản. Hai tổ chức chương trình có ID khác vẫn được giữ riêng, kể cả cùng mã và chưa biết revision; test tổng hợp kiểm tra trường hợp này.
+
+**OBSERVED:** ID này khớp lựa chọn `AcademicProgram` của màn hình điểm trong tài khoản đã khảo sát. Điều đó đủ để đối chiếu mẫu hiện tại, nhưng không chứng minh mọi chương trình lọc điểm luôn tương đương một phiên bản curriculum. Vì vậy, application vẫn giữ `AcademicProgram` và `CurriculumOption` riêng.
+
+Quan hệ tài khoản → lựa chọn chương trình đã xác minh. Quan hệ tài khoản → chương trình **đang áp dụng** chưa xác minh: selector không giải thích rõ lịch sử/hiện hành. Importer lưu curriculum ứng viên nhưng không gọi `StudentProfile.selectCurriculum`. Có đúng một lựa chọn trong mẫu cũng không đủ để tự suy trạng thái hiện hành cho mọi tài khoản.
+
+### Môn học và các loại tín chỉ
+
+Danh mục lấy từ `LayDSKS_DaoTao_HocPhan_CT`. Mỗi hàng có ID môn, mã, tên, tín chỉ học tập và ID tổ chức chương trình. ID hàng curriculum không thay cho ID môn. Tên có thể đổi nên không dùng tên làm khóa.
+
+| Nguồn | Ý nghĩa đã đối chiếu | Cách dùng trong AMS |
+| --- | --- | --- |
+| `DAOTAO_HOCPHAN_ID` + `DAOTAO_HOCPHAN_MA` | Môn và mã môn | Tra mapping theo hồ sơ + ID; kiểm tra mã không xung đột |
+| `HOCTRINHAPDUNGHOCTAP` | Tín chỉ học tập của môn, khớp cột/chi tiết trên UI | `Course.credits`; kiểm tra giống giá trị ở thành viên nhóm |
+| `HOCTRINHAPDUNGTINHHOCPHI` | Tín chỉ tính học phí | Không dùng cho Course |
+| `TONGSOTINCHIQUYDINH` ở selector | Tổng tín chỉ quy định của chương trình | `Curriculum.minimumCredits`, không phải tín chỉ đã đạt |
+| `SOTINCHIQUYDINH` ở nhóm tự chọn | Số tín chỉ bắt buộc của nhóm trên UI | `CurriculumGroup.minimumCredits` |
+| Tổng tín chỉ thành viên nhóm | Phép cộng danh mục trong nhóm | Dùng đối chiếu response, không biến thành một requirement mới |
+
+**VERIFIED trong mẫu trình duyệt:** 56 hàng đăng ký nối tới 40 môn riêng biệt trong danh mục; không có xung đột ID/mã/tín chỉ. Cùng mã nhưng khác ID chưa xuất hiện trong mẫu, không có nghĩa trường hợp đó bất khả thi. Nếu gặp, importer trả `IDENTITY_CONFLICT` thay vì gộp. Tín chỉ khác giá trị đã lưu trả `CREDIT_CONFLICT`, không âm thầm chọn nguồn mới thắng nguồn cũ.
+
+Typed mapping cho Course dùng chung trong phạm vi hồ sơ, không tách “môn bảng điểm” và “môn curriculum”. Phase sau có thể dùng nó để tìm UUID đã nhập. Việc tìm được Course không giải quyết quan hệ giữa nhiều đăng ký với một StudentCourse.
+
+### Bắt buộc, tự chọn và yêu cầu nhóm
+
+Phân loại dựa vào hai luồng riêng mà UI thực sự gọi: nhóm bắt buộc và nhóm tự chọn đơn, cùng API thành viên tương ứng. Không suy từ màu, vị trí hoặc chữ trong tên nhóm.
+
+Đã mở cả 5 nhóm bắt buộc và 9 nhóm tự chọn trong UI. ID nhóm, ID chương trình, mã môn và tín chỉ ở các thành viên khớp danh mục. Số thành viên và tổng tín chỉ khớp tổng nguồn báo; không có môn thuộc nhiều nhóm trong mẫu.
+
+Tên nhóm được lưu như tên bình thường, không trở thành enum Phenikaa trong core domain. Domain chỉ phân biệt REQUIRED/ELECTIVE. Nhóm bắt buộc vẫn có entity riêng để giữ cấu trúc chương trình; tổng tín chỉ của nhóm này chưa được hiểu thành “minimum credits”, nên trường đó để null. Với nhóm tự chọn, nguồn có yêu cầu tín chỉ; 4 nhóm còn có yêu cầu số môn, 5 nhóm không cung cấp giá trị này.
+
+Ví dụ tổng hợp: một nhóm chứa bốn môn, mỗi môn ba tín chỉ, nhưng yêu cầu chọn sáu tín chỉ. Tổng danh mục là mười hai, requirement là sáu; hai số không được hoán đổi. Nếu nguồn còn yêu cầu hai môn, AMS lưu riêng cả hai điều kiện, chưa tính sinh viên đã thỏa chúng hay chưa.
+
+Các trường hợp chưa được diễn giải sẽ làm lượt đọc dừng, không bị bỏ qua âm thầm:
+
+- Nhóm có cha: mẫu hiện chỉ xác minh nhóm phẳng, chưa có quy tắc cho cây nhóm.
+- Một môn thuộc nhiều nhóm: chưa có quy tắc tính đóng góp tín chỉ hoặc tránh đếm đôi.
+- `LAHOCPHANBATBUOC` của thành viên nhóm tự chọn có giá trị: tất cả mẫu hiện là null, chưa xác minh ý nghĩa của override này.
+- Tổng nhóm không khớp thành viên, ID ngoài curriculum, mã/tín chỉ không khớp catalog hoặc duplicate ID.
+
+Ba môn ngoài các nhóm đã đọc vẫn tồn tại trong Course. Requirement của chúng là UNKNOWN, không phải tự chọn mặc định. Trường học kỳ kế hoạch trong catalog cũng chưa dùng làm học kỳ thực tế của kết quả học tập.
+
+### Điều kiện tiên quyết: đã thấy nguồn nhưng chưa lưu quan hệ
+
+Danh mục có phần tóm tắt quan hệ ở 46 môn. Đã mở chi tiết một môn có tóm tắt và quan sát request `LayDSKS_DaoTao_QuanHeHocPhan`. Phản hồi có môn hiện tại, môn liên quan, loại quan hệ, mức điều kiện, toán tử và giá trị điều kiện. Java cũng đã đọc được điều kiện này.
+
+**OBSERVED:** mẫu là quan hệ tiên quyết với mức điều kiện liên quan đến điểm, toán tử `>=` và threshold không rỗng. Tài liệu không ghi ngưỡng hoặc môn thật của tài khoản. **UNKNOWN:** thang điểm áp dụng, cách ghép nhiều hàng thành AND/OR, biểu thức lồng nhau, song hành và phạm vi đầy đủ của các loại quan hệ.
+
+`CourseRelationObservation` giữ mô tả điều kiện, gồm nhãn quan hệ/mức/toán tử và threshold; không biến chúng thành một biểu thức có thể chạy. Chỉ đọc chi tiết một môn, không tuyên bố đã kiểm tra tất cả 46 phần tóm tắt hoặc toàn bộ tiên quyết của chương trình.
+
+Model `CoursePrerequisite` hiện chỉ biểu diễn cạnh giữa hai môn. Nếu bỏ ngưỡng điểm rồi chỉ lưu cạnh A → B, AMS sẽ làm mất một phần điều kiện. Tương tự, A OR B không được tách thành hai cạnh bắt buộc vì khi đó thành A AND B. Vì vậy **PREREQUISITE_PERSISTENCE = BLOCKED_PARTIAL**; không có cạnh nguồn nào được insert, không đặt ngưỡng giả hoặc tạo grading policy để lấp chỗ thiếu.
+
+Kiểm tra chống tự tham chiếu và chu trình của Phase 2 vẫn giữ, gồm test tổng hợp A → B → A. Đây là invariant của model cũ, không phải kiểm chứng rằng toàn bộ đồ thị nguồn không có chu trình. **PROPOSED:** review model điều kiện sau khi có thêm mẫu/semantics; không triển khai eligibility engine trong 5B.
+
+### Độ đầy đủ và phân trang
+
+UI tải catalog/nhóm/thành viên bằng `pageIndex=1` và pageSize rất lớn. Envelope `Pager` là chuỗi số; trong các phản hồi đã đối chiếu, nó khớp số hàng tổng. Java không sao chép pageSize hàng triệu từ UI mà dùng 100 hàng/trang, với giới hạn rõ:
+
+| Giới hạn | Giá trị |
+| --- | --- |
+| Số trang mỗi danh sách | 20 |
+| Số môn catalog / thành viên một nhóm | 2.000 |
+| Số lựa chọn curriculum / tổng nhóm trong một curriculum | 64 |
+| Số điều kiện trong một lượt chi tiết môn | 256 |
+| Tổng request cho một lần gọi capability | 128 |
+
+Java thật đã đọc thành công với pageSize 100; mẫu chỉ có 88 môn nên chưa kiểm chứng nhiều trang trên portal thật. Test HTTP tổng hợp có 101 môn để buộc đọc trang hai, cũng kiểm tra lặp trang, tổng đổi giữa chừng, trang rỗng sớm và vượt giới hạn. Có đủ số hàng theo Pager vẫn không chứng minh đã có mọi phiên bản, tab ẩn hoặc dữ liệu chưa công bố, nên `completeness` luôn là UNKNOWN.
+
+Timeout và giới hạn byte mỗi response kế thừa transport hiện có. Tổng số request có chặn nhưng chưa có deadline chung cho cả tác vụ. Khi nhiều nhóm/trang, thời gian giữ khóa database có thể dài; phase này chưa có worker nền hay distributed lock.
+
+### Nhập dữ liệu và xử lý lỗi
+
+`CurriculumImportService` yêu cầu user ACTIVE, kết nối thuộc user đó và StudentProfile đã có. Source observation được kiểm tra trước khi thêm/cập nhật Curriculum, Course, CurriculumGroup và CurriculumCourse. Bảng ánh xạ nguồn giữ UUID ổn định qua các lần nhập; chi tiết FK/unique/nullability ở [database model](database-model.md#ánh-xạ-nguồn-và-nhập-curriculum-trong-phase-5b).
+
+Đổi tên hoặc metadata/yêu cầu nhóm được cập nhật cùng entity khi identity giữ nguyên. Cohort/yêu cầu số môn chưa biết không xóa giá trị cũ. Mã xung đột, tín chỉ khác hoặc chuyển nhóm chưa có quy tắc sẽ làm transaction rollback. Không sửa dữ liệu của hồ sơ khác.
+
+Khi nguồn trả rỗng/thiếu nhưng completeness UNKNOWN, chỉ cập nhật những hàng thực sự nhận được: không xóa course, curriculum, group hoặc membership cũ; không xóa prerequisite; không bỏ curriculum đã chọn. Một lượt nhập thất bại không để lại nửa chương trình. Lỗi nguồn trả mã an toàn; chỉ SESSION_EXPIRED mới yêu cầu kết nối lại.
+
+Chưa có API import hoặc giao diện cấp phiên. Tính năng vẫn mặc định tắt. Payload phiên phiên bản 4 thêm ngữ cảnh curriculum riêng và đọc được phiên bản 1–3; phiên cũ thiếu capability mới không làm các capability cũ bị vô hiệu hóa. Không đổi CSRF, cookie, fixed host allowlist, redirect policy hoặc tắt kiểm tra để gọi được portal.
+
+### Tra cứu endpoint đã quan sát
+
+Tất cả dùng POST trên host portal hiện có; đây là `PORTAL_INTERNAL_API`, không phải official/public API. Field `A` chứa request đã chuyển đổi; response `Data.B` được giải mã bằng ngữ cảnh phiên trong bộ nhớ. Không giữ request/response thật làm fixture.
+
+| Mục đích | Path sau host | Function |
+| --- | --- | --- |
+| Selector | `/dangkyhocapi3/api/DKH_Chung_MH/DSA4BRICKTQuLyYVMygvKQPP` | `pkg_dangkyhoc_chung.LayDSChuongTrinh` |
+| Catalog | `/kehoachchuongtrinhapi/api/KHCT_ThongTin_MH/DSA4BRIKEh4FIC4VIC4eCS4iESkgLx4CFQPP` | `pkg_kehoach_thongtin.LayDSKS_DaoTao_HocPhan_CT` |
+| Nhóm bắt buộc | `/kehoachchuongtrinhapi/api/KHCT_ThongTin_MH/DSA4BRIKEh4FIC4VIC4eCikuKAMgNQM0LiIP` | `pkg_kehoach_thongtin.LayDSKS_DaoTao_KhoiBatBuoc` |
+| Nhóm tự chọn | `/kehoachchuongtrinhapi/api/KHCT_ThongTin_MH/DSA4BRIKEh4FIC4VIC4eCikuKBU0AikuLx4FLi8P` | `pkg_kehoach_thongtin.LayDSKS_DaoTao_KhoiTuChon_Don` |
+| Thành viên bắt buộc | `/kehoachchuongtrinhapi/api/KHCT_ThongTin_MH/DSA4BRIKEh4FIC4VIC4eCREeCikuKAMgNQM0LiIP` | `pkg_kehoach_thongtin.LayDSKS_DaoTao_HP_KhoiBatBuoc` |
+| Thành viên tự chọn | `/kehoachchuongtrinhapi/api/KHCT_ThongTin_MH/DSA4BRIKEh4FIC4VIC4eCREeChU0AikuLx4FLi8P` | `pkg_kehoach_thongtin.LayDSKS_DaoTao_HP_KTuChon_Don` |
+| Điều kiện môn | `/kehoachchuongtrinhapi/api/KHCT_ThongTin_MH/DSA4BRIKEh4FIC4VIC4eEDQgLwkkCS4iESkgLwPP` | `pkg_kehoach_thongtin.LayDSKS_DaoTao_QuanHeHocPhan` |
+
+Request chung có `action`, `func`, `iM`, mã chức năng và ID người thực hiện. Selector thêm ID người học; catalog dùng `strDaoTao_ChuongTrinh_Id`; nhóm/thành viên/quan hệ dùng `strDaoTao_ToChucCT_Id`. Thành viên thêm ID nhóm đúng loại, chi tiết môn thêm `strDaoTao_HocPhan_Id`. Các bộ lọc keyword, thuộc tính, thời gian kế hoạch/thực tế, phạm vi đảm nhiệm hoặc môn liên quan được để rỗng đúng request UI đã quan sát; không tự đặt bộ lọc làm mất dữ liệu. Reader và test HTTP ghi chính xác tên parameter cho từng endpoint.
+
+### Kiểm chứng thật và kiểm thử tự động
+
+Lượt local ngày 26/09/2026 dùng phiên do chủ tài khoản tự đăng nhập, Chrome profile và helper riêng ngoài repository. Phiên được chuyển trong bộ nhớ qua loopback mã hóa AES-GCM, khóa bàn giao bọc RSA-OAEP và kiểm tra fingerprint trước khi gửi. Không truyền credential qua command line, file cấu hình hoặc log. Java dùng đúng client/service production, không thay bộ đọc bằng dữ liệu browser đã parse.
+
+Database PostgreSQL/Redis tạm chỉ phục vụ lượt kiểm chứng và được đóng sau khi helper kết thúc. Tài khoản AMS trong database này là tài khoản tổng hợp; không nhập vào database phát triển đang dùng. Luồng kết nối vẫn xác minh hồ sơ thật và mã hóa phiên như Phase 4B.
+
+Kết quả đã kiểm tra:
+
+- Selector trả một curriculum; reader trả 88 môn, 14 nhóm và 85 membership, completeness UNKNOWN.
+- Lượt nhập đầu và lượt nhập lặp giữ nguyên toàn bộ UUID, không tăng số hàng. `student_profile.curriculum_id` vẫn null vì chưa xác minh lựa chọn hiện hành.
+- Có 0 CoursePrerequisite, 0 StudentCourse và 0 AcademicResult được nhập.
+- Reader chi tiết trả một điều kiện quan hệ; điều kiện không được chuyển thành cạnh tiên quyết.
+- Lượt đầu timeout ở bước đối chiếu học tập sau khi import đã đạt. Thử lại đúng một lần, không đổi timeout: đọc được 49 bản ghi học tập, nối đủ tới 37 Course đã lưu, khớp ID/mã/tín chỉ. Cảnh báo nhiều đăng ký cùng lần học vẫn là true.
+
+Đây là kiểm chứng một tài khoản/một mẫu, không phải kiểm thử tải hoặc chứng minh portal luôn ổn định. Tính ổn định của import đồng thời được kiểm tra bằng nguồn tổng hợp trong integration test, không gọi portal đồng thời để thử tải.
+
+Bộ `mvnw.cmd verify` có **182 unit/HTTP test và 106 integration test**, không lỗi hoặc bỏ qua. Trong đó có 8 test mapper curriculum, 20 HTTP test curriculum và 24 integration test mới cho import/migration. Các test nền tảng về chu trình tiên quyết, tài khoản, mã hóa, ownership và mapping domain vẫn chạy. PostgreSQL/Redis được khởi động thật bằng Testcontainers; schema sạch V1–V7, nâng cấp V6–V7 và Hibernate validate đều được kiểm tra.
+
+HTTP test dùng server loopback và fixture tổng hợp: selector, catalog, nhóm, quan hệ, dữ liệu rỗng, phân trang, schema lạ, business failure, decode failure, unauthorized, redirect, timeout và response quá lớn. Không có live test gọi Phenikaa trong CI. Không sửa frontend, dependency, workflow hoặc migration V1–V6 để làm test pass.
+
+Trước commit đã quét 30 file thay đổi và 56 file báo cáo/log bằng 1.661 giá trị nguồn/phiên đang có trong bộ nhớ. Hai kết quả khớp chỉ là nhãn chung “Học kỳ” và “Điều kiện” trong tài liệu, không phải định danh hoặc credential. Không thấy giá trị nhạy cảm đã biết trong các file được kiểm tra. Scan này bổ sung cho review nội dung và danh sách staged, không phải lời bảo đảm rằng một biểu thức tìm kiếm có thể phát hiện mọi dạng secret. Chỉ dùng fixture tổng hợp; không đưa payload thật, profile, helper, HAR, screenshot hoặc báo cáo runtime vào Git.
+
+### Trạng thái nghiệm thu
+
+| Tiêu chí | Trạng thái | Phạm vi kết luận |
+| --- | --- | --- |
+| CURRICULUM_CAPABILITY | PASS | Java đọc selector, catalog, nhóm và thành viên thật |
+| CURRICULUM_IDENTITY | PASS | ID tổ chức chương trình được đối chiếu; chưa biết revision/hiện hành |
+| CURRICULUM_PERSISTENCE | PASS | Chỉ phần đủ bằng chứng; nhập lặp giữ UUID, không tự chọn cho hồ sơ |
+| COURSE_CATALOG_MAPPING | PASS | Mapping theo hồ sơ + source ID, có kiểm tra mã và collision |
+| COURSE_CREDITS | PASS | Tín chỉ học tập khớp catalog, thành viên nhóm và Course đối chiếu từ điểm |
+| REQUIRED_ELECTIVE_MAPPING | BLOCKED_PARTIAL | Đã xác minh 85/88 môn; ba môn chưa được gán loại |
+| CURRICULUM_GROUP_MAPPING | PASS | 14 nhóm phẳng và requirement đã đối chiếu; chưa hỗ trợ cây nhóm |
+| PREREQUISITE_SOURCE | PARTIAL | Có nguồn thật và một điều kiện đã đọc; chưa phủ toàn bộ quan hệ |
+| PREREQUISITE_PERSISTENCE | BLOCKED_PARTIAL | Model thiếu điều kiện điểm tối thiểu và biểu thức AND/OR |
+| PHASE_5B_OVERALL | PARTIAL | Phần nhập đã hoạt động; giữ nguyên các giới hạn ở trên để review |
+
+### Những giới hạn phải giữ khi review phase sau
+
+- **COURSE_MAPPING_5A_AFTER_5B = PARTIALLY_RESOLVED:** đã có UUID/mapping và đối chiếu môn trùng nguồn trong mẫu; chưa khái quát lifecycle ID hoặc catalog cho mọi chương trình.
+- **STUDENT_COURSE_MAPPING = BLOCKED_PARTIAL:** vẫn có 8 nhóm đăng ký cùng môn/cùng LANHOC. Không chọn hàng mới nhất/có điểm cuối, không tự gộp, tăng attempt hoặc bỏ hàng.
+- **SEMESTER_MAPPING = BLOCKED_PARTIAL:** kỳ kế hoạch trong curriculum không thay cho học kỳ thực tế; chưa giải quyết cây kỳ nguồn/kỳ thi.
+- Điểm vẫn thiếu quy tắc nhiều kết quả cuối, trạng thái học lại và tín chỉ đạt riêng từng lần học. Không có AcademicResult importer.
+- **EXAM_TO_STUDENTCOURSE = UNRESOLVED**, **SCHEDULE_CORRELATION = PARTIALLY_RESOLVED**. ID lịch lặp qua nhiều ngày vẫn không phải occurrence key. Không có import lịch/thi.
+
+Chưa bắt đầu Phase 5C, 4D hoặc 6. Chưa tính GPA, điều kiện đăng ký, môn còn thiếu, change detection, Google Calendar hoặc email.

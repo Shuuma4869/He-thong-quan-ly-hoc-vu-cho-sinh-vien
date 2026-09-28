@@ -2,7 +2,7 @@
 
 ## Phạm vi hiện tại
 
-Phase 2 đã tạo model học vụ chuẩn hóa. Phase 4B thêm kết nối Phenikaa mã hóa và use case nhập hồ sơ; lịch mới được đọc thành observation, chưa được lưu vì thiếu liên kết nguồn đáng tin cậy. Chưa có API CRUD học vụ, bộ tính GPA hoặc change detection engine.
+Phase 2 đã tạo model học vụ chuẩn hóa. Phase 4B thêm kết nối Phenikaa mã hóa và use case nhập hồ sơ. Phase 5B thêm nhập chương trình, danh mục môn và nhóm có bằng chứng nguồn. Điểm/lịch vẫn chỉ được đọc thành observation, chưa được lưu vì thiếu liên kết nguồn đáng tin cậy. Chưa có API CRUD học vụ, bộ tính GPA hoặc change detection engine.
 
 ## Ownership và persistence
 
@@ -26,7 +26,10 @@ erDiagram
     student_profile ||--o{ grading_policy : has
     curriculum ||--o{ curriculum_group : defines
     curriculum ||--o{ curriculum_course : contains
-    curriculum_group o|--o{ curriculum_course : groups_electives
+    curriculum_group o|--o{ curriculum_course : groups_courses
+    curriculum ||--o| phenikaa_curriculum_mapping : source_identity
+    course ||--o| phenikaa_course_mapping : source_identity
+    curriculum_group ||--o| phenikaa_curriculum_group_mapping : source_identity
     course ||--o{ curriculum_course : describes
     curriculum_course ||--o{ course_prerequisite : dependent_course
     curriculum_course ||--o{ course_prerequisite : prerequisite_course
@@ -69,7 +72,9 @@ Schema không tự giải quyết bài toán nguồn thiếu identity. Connector
 
 ## Chương trình và điều kiện học
 
-Curriculum unique theo hồ sơ + mã + revision; cohort là metadata tùy chọn. `minimum_credits` là yêu cầu tổng tín chỉ. CurriculumCourse phân biệt `REQUIRED` và `ELECTIVE`; elective bắt buộc thuộc một CurriculumGroup có mức tín chỉ tối thiểu riêng. Một môn chỉ xuất hiện một lần trong cùng curriculum để tránh tự động đếm đôi giữa các nhóm.
+Curriculum unique theo hồ sơ + mã + revision khi revision đã biết; cohort là metadata tùy chọn. Từ V7, revision được phép null nếu nguồn không công bố phiên bản. PostgreSQL cho phép nhiều hàng có revision null trong unique này, nên importer phải dùng thêm bảng ánh xạ ID chương trình nguồn để chống trùng. Không điền một revision giả chỉ để thỏa schema. `minimum_credits` là yêu cầu tổng tín chỉ, không phải tín chỉ đã tích lũy của sinh viên.
+
+CurriculumCourse phân biệt `REQUIRED` và `ELECTIVE`. Cả hai có thể thuộc nhóm; elective bắt buộc có nhóm với mức tín chỉ tối thiểu đã biết. Requirement của môn và nhóm phải khớp bằng FK ghép. Một môn chỉ xuất hiện một lần trong cùng curriculum để tránh đếm đôi. Nhóm bắt buộc được phép chưa biết minimum credits: tổng tín chỉ các thành viên không tự trở thành một điều kiện tốt nghiệp riêng. `minimum_course_count` là yêu cầu số môn nếu nguồn có, null không được hiểu là 0.
 
 CoursePrerequisite liên kết hai môn cùng curriculum, phân biệt `PREREQUISITE` và `COREQUISITE`. Các điều kiện tiên quyết được hiểu là AND; chưa có nhóm OR, môn tương đương hoặc điều kiện điểm tối thiểu. Database chặn quan hệ tự tham chiếu và bản ghi trùng. `validateAcyclic` kiểm tra chu trình tiên quyết trong toàn bộ tập quan hệ của một curriculum; corequisite không tham gia đồ thị thứ tự học. Use case import sau này phải gọi kiểm tra này trong transaction và kiểm soát cập nhật đồng thời; FK/CHECK không tự ngăn chu trình nhiều cạnh.
 
@@ -99,7 +104,7 @@ Chưa lưu payload snapshot đầy đủ hoặc tự tính hash/diff. Metadata v
 | --- | --- |
 | Profile | Student number, trường, chương trình, cohort và lựa chọn curriculum/policy có thể null vì chưa thu thập; user ID bắt buộc và unique |
 | Semester | Cặp ngày có thể cùng null khi chưa biết lịch; nếu có phải đủ hai ngày và cuối không trước đầu |
-| Curriculum | Cohort/recommended term tùy chọn; group ID chỉ có cho elective; mã + revision bắt buộc để phân biệt phiên bản |
+| Curriculum | Cohort/revision/recommended term có thể chưa biết; mã bắt buộc. Elective phải có group; required cũng có thể có group. Importer dùng source mapping khi revision chưa biết |
 | StudentCourse | Section nullable để lưu bảng điểm cũ không có thông tin lớp; môn/học kỳ/attempt/tín chỉ bắt buộc |
 | AcademicResult | Điểm số/chữ/grade points và policy có thể chưa biết; không được bật tính GPA nếu thiếu grade points/policy; tín chỉ đạt không vượt đăng ký |
 | Schedule | Room/lecturer/format có thể chưa công bố. Session bắt buộc đủ start/end; exam cho phép thiếu end. Không bịa giờ để hoàn thiện dữ liệu |
@@ -113,6 +118,7 @@ Unique index phục vụ cả chống trùng và tra cứu theo owner/identity. 
 - V4: lớp mở, lần học, kết quả, buổi học và kỳ thi.
 - V5: snapshot metadata và schedule change.
 - V6: kết nối Phenikaa mã hóa, ownership và trạng thái truy cập.
+- V7: ánh xạ chương trình/môn/nhóm nguồn; revision chưa biết; nhóm bắt buộc/tự chọn và yêu cầu số môn.
 
 V1/V2 giữ nguyên; `ddl-auto=validate` giữ nguyên. Migration không seed học vụ hoặc sao chép dữ liệu cá nhân. Kiểm thử bao gồm database sạch, nâng cấp V2 → V5 giữ nguyên account/settings, chạy lại không tạo migration trùng, mapping tất cả entity, JSONB/decimal/time, constraint/ownership và optimistic locking. Test dùng dữ liệu tổng hợp `@example.test`, không dùng tài khoản trường.
 
@@ -147,3 +153,25 @@ Ràng buộc hiện tại của `student_course` là unique theo hồ sơ + môn
 Ví dụ tổng hợp: hai đăng ký A/B cùng môn TEST101 đều báo lần học 1. Có hai UUID đăng ký không có nghĩa chắc chắn có hai lần học; cũng không có nghĩa chúng phải được gộp thành một. Cần xác minh quan hệ trước, rồi mới quyết định một lần học có một hay nhiều ánh xạ đăng ký. Observation hiện giữ cả hai, không ghi vào domain.
 
 Trạng thái “Học lại” và tín chỉ đạt riêng cho từng lần học cũng cần quyết định trước khi import. Chưa đổi enum `AcademicResult`, chưa sửa nullability của `credits_earned`, không dùng tín chỉ môn để điền thay tín chỉ đã tích lũy. Toàn bộ dữ liệu nguồn mới dừng ở observation trong bộ nhớ; [kết quả Phase 5A](phenikaa-integration.md#phase-5a-môn-học-học-kỳ-lần-học-và-kết-quả) mô tả bằng chứng và phần chưa rõ.
+
+## Ánh xạ nguồn và nhập curriculum trong Phase 5B
+
+Ba bảng mới giữ liên hệ giữa ID nguồn và UUID AMS. Đây không phải bản sao payload: chỉ lưu khóa cần đối chiếu và thời điểm thấy lần đầu/gần nhất.
+
+| Bảng | Khóa chống trùng nguồn | Khóa ngoại bảo vệ |
+| --- | --- | --- |
+| `phenikaa_curriculum_mapping` | profile + source curriculum ID | profile + curriculum UUID |
+| `phenikaa_course_mapping` | profile + source course ID | profile + course UUID |
+| `phenikaa_curriculum_group_mapping` | profile + curriculum UUID + source group ID | profile + curriculum UUID + group UUID |
+
+Mỗi bảng còn có unique theo entity đích trong cùng scope; hai ID nguồn không âm thầm được gộp vào một entity. Timestamp bắt buộc, `last_seen_at` không trước `first_seen_at`. Các unique index đã phục vụ tìm kiếm theo prefix profile; không thêm index trùng. FK không cascade xóa học vụ khi ngắt kết nối.
+
+Scope là hồ sơ, không phải ID phiên đăng nhập: kết nối lại cùng tài khoản nguồn không tạo catalog mới. Cơ chế kết nối hiện có vẫn chặn đổi sang người học khác trên cùng user. Course tiếp tục thuộc riêng hồ sơ, không trở thành catalog toàn trường dùng chung.
+
+Ví dụ giả định: TEST101 xuất hiện trong cả bảng điểm và curriculum, cùng source course ID. Sau khi curriculum tạo Course, lần đối chiếu bảng điểm dùng bảng mapping này để tìm đúng UUID, không tạo một “môn bảng điểm” thứ hai. Nếu nguồn trả ID khác nhưng vẫn mã TEST101, importer dừng với `IDENTITY_CONFLICT`; nếu tín chỉ khác, dừng với `CREDIT_CONFLICT`. Không chọn nguồn thắng bằng thứ tự gọi API.
+
+Importer cập nhật tên chương trình/môn/nhóm và yêu cầu nhóm khi identity ổn định. Cohort hoặc yêu cầu số môn null không xóa giá trị đã biết. Đổi nhóm của một môn đã lưu dừng với `GROUP_CONFLICT`, chờ quy tắc đối soát ở phạm vi sau. Transaction rollback cả những cập nhật đã làm trước khi gặp xung đột.
+
+Trong mẫu kiểm chứng, danh mục có 88 môn nhưng chỉ 85 môn nối được tới nhóm đã xác minh. Cả 88 được lưu thành Course; chỉ 85 có CurriculumCourse. Ba môn còn lại không bị gán REQUIRED hoặc ELECTIVE để lấp chỗ trống. Đây là giới hạn dữ liệu nhập, không phải ba môn bị loại khỏi chương trình chính thức. Chưa tự gán `student_profile.curriculum_id`.
+
+V7 nâng cấp các nhóm cũ thành ELECTIVE vì model V3 chỉ cho phép loại nhóm đó; không suy lại dữ liệu nguồn. V1–V6 giữ nguyên. Test nâng cấp V6 → V7 giữ chương trình, nhóm và liên kết cũ; test schema sạch chạy V1 → V7 rồi Hibernate validate. Các kiểm thử import bao gồm lặp, đồng thời, hai user, FK ownership, lỗi nguồn, nguồn rỗng/thiếu và rollback. Không import CoursePrerequisite: model chưa biểu diễn được điều kiện điểm tối thiểu đã quan sát; kiểm tra self-reference/chu trình của model cũ vẫn được giữ.
