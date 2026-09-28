@@ -7,6 +7,13 @@ import java.util.List;
 
 public interface AcademicPortalClient {
 
+    List<CurriculumOption> fetchCurricula(UUID currentUserId, StudentConnectionId connectionId);
+
+    CurriculumObservation fetchCurriculum(UUID currentUserId, StudentConnectionId connectionId, CurriculumOption curriculum);
+
+    CourseRelationObservation fetchCourseRelations(UUID currentUserId, StudentConnectionId connectionId,
+                                                   CurriculumOption curriculum, String courseSourceId);
+
     StudentConnectionId currentConnection(UUID currentUserId);
 
     ProfileObservation fetchProfile(UUID currentUserId, StudentConnectionId connectionId);

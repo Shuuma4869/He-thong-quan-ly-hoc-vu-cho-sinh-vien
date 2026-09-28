@@ -69,6 +69,24 @@ public class PhenikaaAcademicPortalClient implements AcademicPortalClient {
         return access(currentUserId, connectionId, material -> http.fetchSchedule(material.schedule(), from, through));
     }
 
+    @Override public List<CurriculumOption> fetchCurricula(UUID user, StudentConnectionId connection) {
+        return access(user, connection, material -> http.fetchCurricula(curriculumSession(material)));
+    }
+
+    @Override public CurriculumObservation fetchCurriculum(UUID user, StudentConnectionId connection, CurriculumOption curriculum) {
+        return access(user, connection, material -> http.fetchCurriculum(curriculumSession(material), curriculum));
+    }
+
+    @Override public CourseRelationObservation fetchCourseRelations(UUID user, StudentConnectionId connection,
+                                                                   CurriculumOption curriculum, String courseSourceId) {
+        return access(user, connection, material -> http.fetchCourseRelations(curriculumSession(material), curriculum, courseSourceId));
+    }
+
+    private static PhenikaaSession curriculumSession(PhenikaaSessionMaterial material) {
+        if (material.curriculum() == null) throw new AcademicPortalException(CONNECTION_UNAVAILABLE);
+        return material.curriculum();
+    }
+
     @Override public List<ExamPeriod> fetchExamPeriods(UUID currentUserId, StudentConnectionId connectionId) {
         return access(currentUserId, connectionId, material -> http.fetchExamPeriods(examSession(material)));
     }

@@ -25,6 +25,9 @@ import vn.edu.phenikaa.ams.academic.application.port.ExamPeriod;
 import vn.edu.phenikaa.ams.academic.application.port.AcademicProgram;
 import vn.edu.phenikaa.ams.academic.application.port.AcademicPeriod;
 import vn.edu.phenikaa.ams.academic.application.port.AcademicRecordObservation;
+import vn.edu.phenikaa.ams.academic.application.port.CurriculumOption;
+import vn.edu.phenikaa.ams.academic.application.port.CurriculumObservation;
+import vn.edu.phenikaa.ams.academic.application.port.CourseRelationObservation;
 import static vn.edu.phenikaa.ams.academic.infrastructure.phenikaa.PhenikaaClientException.Code.*;
 
 public final class PhenikaaHttpClient {
@@ -119,6 +122,18 @@ public final class PhenikaaHttpClient {
             parameters.clear();
             if (response != null) Arrays.fill(response, (byte) 0);
         }
+    }
+
+    public List<CurriculumOption> fetchCurricula(PhenikaaSession session) {
+        return new PhenikaaCurriculumReader(transport, codec, json).options(session);
+    }
+
+    public CurriculumObservation fetchCurriculum(PhenikaaSession session, CurriculumOption curriculum) {
+        return new PhenikaaCurriculumReader(transport, codec, json).read(session, curriculum);
+    }
+
+    public CourseRelationObservation fetchCourseRelations(PhenikaaSession session, CurriculumOption curriculum, String courseSourceId) {
+        return new PhenikaaCurriculumReader(transport, codec, json).relations(session, curriculum, courseSourceId);
     }
 
     public List<ExamPeriod> fetchExamPeriods(PhenikaaSession session) {

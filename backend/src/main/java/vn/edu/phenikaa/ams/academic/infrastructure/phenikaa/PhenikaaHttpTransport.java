@@ -23,6 +23,21 @@ public final class PhenikaaHttpTransport implements AutoCloseable {
     static final String ACADEMIC_RECORDS_PATH = "/sinhvienapi3/api/SV_ThongTin_MH/CiQ1EDQgCS4iFSAxAiAPKSAv";
     static final String ACADEMIC_REGISTRATIONS_PATH = "/sinhvienapi3/api/SV_ThongTin_MH/DSA4CiQ1EDQgBSAvJgo4CS4iAiAPKSAv";
     private final HttpClient client;
+    static final String CURRICULA_PATH = "/dangkyhocapi3/api/DKH_Chung_MH/DSA4BRICKTQuLyYVMygvKQPP";
+    private static final String CURRICULUM_PREFIX = "/kehoachchuongtrinhapi/api/KHCT_ThongTin_MH/";
+    static final String CURRICULUM_COURSES_PATH = CURRICULUM_PREFIX + "DSA4BRIKEh4FIC4VIC4eCS4iESkgLx4CFQPP";
+    static final String REQUIRED_GROUPS_PATH = CURRICULUM_PREFIX + "DSA4BRIKEh4FIC4VIC4eCikuKAMgNQM0LiIP";
+    static final String ELECTIVE_GROUPS_PATH = CURRICULUM_PREFIX + "DSA4BRIKEh4FIC4VIC4eCikuKBU0AikuLx4FLi8P";
+    static final String REQUIRED_MEMBERS_PATH = CURRICULUM_PREFIX + "DSA4BRIKEh4FIC4VIC4eCREeCikuKAMgNQM0LiIP";
+    static final String ELECTIVE_MEMBERS_PATH = CURRICULUM_PREFIX + "DSA4BRIKEh4FIC4VIC4eCREeChU0AikuLx4FLi8P";
+    static final String COURSE_RELATIONS_PATH = CURRICULUM_PREFIX + "DSA4BRIKEh4FIC4VIC4eEDQgLwkkCS4iESkgLwPP";
+
+    byte[] readCurriculum(PhenikaaSession session, String encoded, String path) {
+        if (!java.util.Set.of(CURRICULA_PATH, CURRICULUM_COURSES_PATH, REQUIRED_GROUPS_PATH, ELECTIVE_GROUPS_PATH,
+                REQUIRED_MEMBERS_PATH, ELECTIVE_MEMBERS_PATH, COURSE_RELATIONS_PATH).contains(path))
+            throw new IllegalArgumentException("Unsupported curriculum endpoint");
+        return read(session, encoded, path);
+    }
     private final URI baseUri;
     private final Duration responseTimeout;
     private final int maxBytes;

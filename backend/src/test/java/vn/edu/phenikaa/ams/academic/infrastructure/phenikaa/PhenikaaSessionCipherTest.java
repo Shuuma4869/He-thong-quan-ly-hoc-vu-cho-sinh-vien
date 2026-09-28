@@ -7,6 +7,30 @@ import org.junit.jupiter.api.Test;
 import static org.assertj.core.api.Assertions.*;
 
 class PhenikaaSessionCipherTest {
+    @Test void versionThreeRemainsReadableAndDoesNotGrantCurriculumAccess() throws Exception {
+        try (var buffer = new java.io.ByteArrayOutputStream(); var output = new java.io.DataOutputStream(buffer)) {
+            output.writeInt(3);
+            for (String value : new String[]{"Bearer synthetic-secret", "", "synthetic-key", "synthetic-learner", "profile", "schedule"}) output.writeUTF(value);
+            output.writeBoolean(false); output.writeBoolean(true); output.writeUTF("academic");
+            try (var session = PhenikaaSessionMaterial.decode(buffer.toByteArray())) {
+                assertThat(session.academic().functionId()).isEqualTo("academic");
+                assertThat(session.curriculum()).isNull();
+            }
+        }
+    }
+
+    @Test void versionFourEncryptsDistinctCurriculumContextAndWipesIt() {
+        UUID connection = UUID.randomUUID(), user = UUID.randomUUID();
+        try (var cipher = new PhenikaaSessionCipher(randomKey(), 1);
+             var material = new PhenikaaSessionMaterial("Bearer synthetic-secret", "", "synthetic-key", "synthetic-learner",
+                     "profile", "schedule", null, "academic", "curriculum")) {
+            var restored = cipher.decrypt(cipher.encrypt(material, connection, user), 1, connection, user);
+            assertThat(restored.curriculum().functionId()).isEqualTo("curriculum");
+            assertThat(restored.academic().functionId()).isEqualTo("academic");
+            restored.close();
+            assertThatThrownBy(() -> restored.curriculum().authorization()).isInstanceOf(IllegalStateException.class);
+        }
+    }
     private final UUID connectionId = UUID.randomUUID();
     private final UUID userId = UUID.randomUUID();
 
@@ -76,7 +100,7 @@ class PhenikaaSessionCipherTest {
         } finally { java.util.Arrays.fill(encoded, (byte) 0); }
     }
 
-    @Test void encryptedVersionThreeKeepsAcademicContextDistinctAndClosesIt() {
+    @Test void encryptedSessionKeepsAcademicContextDistinctAndClosesIt() {
         try (var cipher = new PhenikaaSessionCipher(randomKey(), 1);
              var original = new PhenikaaSessionMaterial("Bearer synthetic-secret", "", "synthetic-key", "synthetic-learner",
                      "synthetic-profile-function", "synthetic-schedule-function", "synthetic-exam-function", "synthetic-academic-function")) {
