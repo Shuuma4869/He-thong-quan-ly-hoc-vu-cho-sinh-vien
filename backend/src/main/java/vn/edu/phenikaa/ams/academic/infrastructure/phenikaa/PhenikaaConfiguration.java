@@ -12,6 +12,16 @@ import vn.edu.phenikaa.ams.user.infrastructure.UserRepository;
 @Configuration(proxyBeanMethods = false)
 @ConditionalOnProperty(name = "ams.phenikaa.enabled", havingValue = "true")
 public class PhenikaaConfiguration {
+    @Bean
+    PhenikaaCurriculumStore phenikaaCurriculumStore(jakarta.persistence.EntityManager entities, org.springframework.jdbc.core.JdbcTemplate jdbc) {
+        return new PhenikaaCurriculumStore(entities, jdbc);
+    }
+
+    @Bean
+    vn.edu.phenikaa.ams.academic.application.CurriculumImportService curriculumImportService(
+            PhenikaaAcademicPortalClient portal, StudentProfileRepository profiles, PhenikaaCurriculumStore store) {
+        return new vn.edu.phenikaa.ams.academic.application.CurriculumImportService(portal, profiles, store);
+    }
     @Bean(destroyMethod = "close")
     PhenikaaSessionCipher phenikaaSessionCipher(@Value("${ams.phenikaa.session-key:}") String key,
                                                @Value("${ams.phenikaa.key-version:1}") int keyVersion) {
