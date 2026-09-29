@@ -25,6 +25,7 @@ import vn.edu.phenikaa.ams.academic.application.port.ExamPeriod;
 import vn.edu.phenikaa.ams.academic.application.port.AcademicProgram;
 import vn.edu.phenikaa.ams.academic.application.port.AcademicPeriod;
 import vn.edu.phenikaa.ams.academic.application.port.AcademicRecordObservation;
+import vn.edu.phenikaa.ams.academic.application.port.AcademicResultDetail;
 import vn.edu.phenikaa.ams.academic.application.port.CurriculumOption;
 import vn.edu.phenikaa.ams.academic.application.port.CurriculumObservation;
 import vn.edu.phenikaa.ams.academic.application.port.CourseRelationObservation;
@@ -228,6 +229,19 @@ public final class PhenikaaHttpClient {
         var parameters = examParameters(session, path.substring("/sinhvienapi3/api/".length()), function);
         parameters.put("strQLSV_NguoiHoc_Id", session.learnerId());
         return parameters;
+    }
+
+    public AcademicResultDetail fetchAcademicResultDetail(PhenikaaSession session, AcademicProgram program, String sourceResultId) {
+        var observation = fetchAcademicRecords(session, program);
+        var resultEntry = observation.entries().stream()
+                .filter(e -> e.result() != null && e.result().sourceId().equals(sourceResultId)).findFirst()
+                .orElseThrow(() -> new PhenikaaClientException(UNEXPECTED_SCHEMA));
+        var parameters = examParameters(session,
+                PhenikaaHttpTransport.ACADEMIC_RESULT_DETAIL_PATH.substring("/sinhvienapi3/api/".length()),
+                "LayDSDiemThanhPhanTheoTKHP");
+        parameters.put("strDiem_NguoiHoc_TongKet_Id", resultEntry.result().sourceId());
+        var data = readExamData(session, parameters, transport::readAcademicResultDetail);
+        return PhenikaaAcademicRecords.resultDetail(data, observation, resultEntry);
     }
 
     private LinkedHashMap<String, Object> examParameters(PhenikaaSession session, String action, String function) {

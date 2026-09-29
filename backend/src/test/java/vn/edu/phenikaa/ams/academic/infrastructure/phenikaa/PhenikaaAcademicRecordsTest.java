@@ -40,6 +40,63 @@ class PhenikaaAcademicRecordsTest {
         var value = map(AcademicSourceFixtures.records(AcademicSourceFixtures.component(1), ""), AcademicSourceFixtures.registrations());
         assertThat(value.entries().getFirst().result()).isNull();
     }
+    @Test void multiplePeriodsMapToOneCanonicalSemesterWithoutMergingRegistrations() {
+        var entries = map(AcademicSourceFixtures.records(), AcademicSourceFixtures.registrations()).entries();
+        assertThat(entries).extracting(e -> e.semesterIdentifier().canonicalCode()).containsOnly("2026-2027:T1");
+        assertThat(entries).extracting(AcademicRecordObservation.Entry::sourcePeriodId).doesNotHaveDuplicates();
+        assertThat(entries).extracting(AcademicRecordObservation.Entry::sourceEnrollmentId).doesNotHaveDuplicates();
+    }
+    @ParameterizedTest @ValueSource(strings = {"1899_1900", "9999_10000", "2026_2028", "2026-2027"})
+    void rejectsInvalidAcademicYearBeforeSemesterMapping(String year) {
+        invalid(AcademicSourceFixtures.records().replace("2026_2027", year), AcademicSourceFixtures.registrations());
+    }
+    @Test void sameCourseAttemptAndPeriodStillDoNotProveOneLearningAttempt() {
+        var data = AcademicSourceFixtures.records().replace("\"LANHOC\":2.0", "\"LANHOC\":1.0")
+                .replace("synthetic-period-2", "synthetic-period-1");
+        var observation = map(data, AcademicSourceFixtures.registrations().replace("synthetic-period-2", "synthetic-period-1"));
+        assertThat(observation.hasAmbiguousLearningAttempts()).isTrue();
+        assertThat(observation.entries()).hasSize(2);
+    }
+    @Test void sourceResultDetailLinksComponentsAcrossRegistrationsWithoutInventingAnAttempt() {
+        var observation = linkedObservation();
+        var detail = PhenikaaAcademicRecords.resultDetail(json.readTree(linkedDetails()), observation, observation.entries().getFirst());
+        assertThat(detail.components()).extracting(AcademicResultDetail.ComponentLink::sourceEnrollmentId)
+                .containsExactly("synthetic-registration-1", "synthetic-registration-2");
+        assertThat(detail.sourceResultId()).isEqualTo("synthetic-final-1");
+        assertThat(observation.hasAmbiguousLearningAttempts()).isTrue();
+        assertThat(detail.toString()).isEqualTo("AcademicResultDetail[redacted]");
+        assertThat(detail.components().getFirst().toString()).isEqualTo("AcademicResultComponentLink[redacted]");
+        assertThatThrownBy(() -> detail.components().clear()).isInstanceOf(UnsupportedOperationException.class);
+    }
+    @Test void emptyDetailDoesNotInventLinksOrSelectAResult() {
+        var observation = linkedObservation();
+        assertThat(PhenikaaAcademicRecords.resultDetail(json.readTree("[]"), observation, observation.entries().getFirst()).components()).isEmpty();
+    }
+    @Test void detailCannotLinkAComponentFromAnotherLearningAttempt() {
+        var observation = map(AcademicSourceFixtures.records(), AcademicSourceFixtures.registrations());
+        assertThatThrownBy(() -> PhenikaaAcademicRecords.resultDetail(
+                json.readTree("[" + AcademicSourceFixtures.component(2) + "]"), observation, observation.entries().getFirst()))
+                .hasMessage("UNEXPECTED_SCHEMA").hasNoCause();
+    }
+    @Test void detailRejectsDuplicateUnknownOrChangedComponentsAndExamAttemptMismatch() {
+        var observation = linkedObservation();
+        for (String data : new String[]{linkedDetails().replace("synthetic-component-2", "synthetic-component-1"),
+                linkedDetails().replace("synthetic-component-2", "unknown-component"),
+                linkedDetails().replace("6.25", "7.25"), linkedDetails().replace("\"LANTHI\":2.0", "\"LANTHI\":3.0"),
+                linkedDetails().replace("synthetic-course", "other-course"),
+                linkedDetails().replace("\"NAMHOC\":2026.0", "\"NAMHOC\":2025.0"), "{}"})
+            assertThatThrownBy(() -> PhenikaaAcademicRecords.resultDetail(json.readTree(data), observation, observation.entries().getFirst()))
+                    .hasMessage("UNEXPECTED_SCHEMA").hasNoCause();
+    }
+    private AcademicRecordObservation linkedObservation() {
+        return map(AcademicSourceFixtures.records(AcademicSourceFixtures.component(1) + ","
+                + AcademicSourceFixtures.component(2).replace("\"LANHOC\":2.0", "\"LANHOC\":1.0"),
+                AcademicSourceFixtures.result(1)), AcademicSourceFixtures.registrations());
+    }
+    private String linkedDetails() {
+        return "[" + AcademicSourceFixtures.component(1) + ","
+                + AcademicSourceFixtures.component(2).replace("\"LANHOC\":2.0", "\"LANHOC\":1.0") + "]";
+    }
     @Test void retainsDistinctRegistrationsWithSameReportedLearningAttemptAndFlagsAmbiguity() {
         var data = AcademicSourceFixtures.records().replace("\"LANHOC\":2.0", "\"LANHOC\":1.0");
         var observation = map(data, AcademicSourceFixtures.registrations());

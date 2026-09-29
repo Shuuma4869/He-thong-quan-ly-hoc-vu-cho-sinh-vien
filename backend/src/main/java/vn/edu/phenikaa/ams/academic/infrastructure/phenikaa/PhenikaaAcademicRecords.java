@@ -5,6 +5,7 @@ import java.math.RoundingMode;
 import java.util.*;
 import tools.jackson.databind.JsonNode;
 import vn.edu.phenikaa.ams.academic.application.port.*;
+import vn.edu.phenikaa.ams.academic.domain.Semester;
 import static vn.edu.phenikaa.ams.academic.infrastructure.phenikaa.PhenikaaClientException.Code.*;
 
 final class PhenikaaAcademicRecords {
@@ -55,13 +56,48 @@ final class PhenikaaAcademicRecords {
         var entries = attempts.values().stream().map(Attempt::entry).toList();
         var courses = new HashMap<String, List<Object>>();
         var codes = new HashMap<String, String>();
-        var periods = new HashMap<String, List<Integer>>();
+        var periods = new HashMap<String, Semester.Identifier>();
         for (var entry : entries) {
             requireConsistent(courses, entry.sourceCourseId(), List.of(entry.courseCode(), entry.courseName(), entry.courseCredits()));
             requireConsistent(codes, entry.courseCode(), entry.sourceCourseId());
-            requireConsistent(periods, entry.sourcePeriodId(), List.of(entry.academicYearStart(), entry.semesterNumber()));
+            requireConsistent(periods, entry.sourcePeriodId(), entry.semesterIdentifier());
         }
         return new AcademicRecordObservation(program, entries);
+    }
+
+    static AcademicResultDetail resultDetail(JsonNode data, AcademicRecordObservation observation,
+                                              AcademicRecordObservation.Entry parent) {
+        var entriesByComponent = new HashMap<String, AcademicRecordObservation.Entry>();
+        var components = new HashMap<String, AcademicRecordObservation.Component>();
+        for (var entry : observation.entries()) for (var component : entry.components()) {
+            if (entriesByComponent.putIfAbsent(component.sourceId(), entry) != null) throw invalid();
+            components.put(component.sourceId(), component);
+        }
+        var links = new ArrayList<AcademicResultDetail.ComponentLink>();
+        var seen = new HashSet<String>();
+        for (var row : boundedArray(data, 10000)) {
+            String id = text(row, "ID", 128);
+            var entry = entriesByComponent.get(id);
+            if (!seen.add(id) || entry == null) throw invalid();
+            var component = components.get(id);
+            if (!entry.sourceCourseId().equals(parent.sourceCourseId())
+                    || entry.reportedLearningAttempt() != parent.reportedLearningAttempt()
+                    || !entry.semesterIdentifier().equals(parent.semesterIdentifier())
+                    || component.examAttempt() != parent.result().examAttempt()
+                    || !entry.sourceCourseId().equals(text(row, "DAOTAO_HOCPHAN_ID", 128))
+                    || !entry.courseCode().equals(text(row, "DAOTAO_HOCPHAN_MA", 40))
+                    || !entry.sourcePeriodId().equals(text(row, "DAOTAO_THOIGIANDAOTAO_ID", 128))
+                    || entry.courseCredits().compareTo(decimal(row, "DAOTAO_HOCPHAN_HOCTRINH", 5, false)) != 0
+                    || entry.academicYearStart() != positive(row, "NAMHOC")
+                    || entry.semesterNumber() != positive(row, "HOCKY")
+                    || entry.reportedLearningAttempt() != positive(row, "LANHOC")
+                    || component.examAttempt() != positive(row, "LANTHI")
+                    || !component.code().equals(text(row, "DIEM_THANHPHANDIEM_MA", 80))
+                    || !component.name().equals(text(row, "DIEM_THANHPHANDIEM_TEN", 200))
+                    || component.score().compareTo(decimal(row, "DIEM", 6, false)) != 0) throw invalid();
+            links.add(new AcademicResultDetail.ComponentLink(entry.sourceEnrollmentId(), id));
+        }
+        return new AcademicResultDetail(parent.result().sourceId(), links);
     }
 
     private static Attempt attempt(JsonNode row, boolean finalResult, Map<String, JsonNode> registrations,
