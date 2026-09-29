@@ -1130,3 +1130,146 @@ Trước commit đã quét 30 file thay đổi và 56 file báo cáo/log bằng 
 - **EXAM_TO_STUDENTCOURSE = UNRESOLVED**, **SCHEDULE_CORRELATION = PARTIALLY_RESOLVED**. ID lịch lặp qua nhiều ngày vẫn không phải occurrence key. Không có import lịch/thi.
 
 Chưa bắt đầu Phase 5C, 4D hoặc 6. Chưa tính GPA, điều kiện đăng ký, môn còn thiếu, change detection, Google Calendar hoặc email.
+
+## Phase 5C: đối chiếu lần học và chi tiết kết quả
+
+### Kết quả chính
+
+**PHASE_5C_OVERALL = PARTIAL.** Đã tìm được quan hệ nguồn giải thích vì sao không thể biến từng đăng ký thành một StudentCourse: ở cả tám nhóm đang mơ hồ, chi tiết của một kết quả tổng kết chứa điểm thành phần từ hai lớp khác nhau. Quan hệ này được nguồn trả về theo ID kết quả, không phải do AMS tự gom các hàng có cùng môn và số lần học.
+
+Tuy vậy, “cùng góp điểm vào một kết quả tổng kết” chưa đủ để xác định một lần học tồn tại lâu dài. Chưa có quy tắc cho lúc chưa có điểm tổng kết, khi chuyển lớp hoặc khi tổng kết được sửa/tạo lại. Cũng chưa rõ tín chỉ đạt và việc tính GPA của từng lần học. Vì vậy, phase này bổ sung bộ đọc chi tiết và chuẩn hóa định danh học kỳ, **chưa có AcademicRecordImportService, chưa ghi Semester/StudentCourse/AcademicResult từ Phenikaa và chưa thêm V8**.
+
+Baseline là `3600f2c89991d2b45fbe8f80018120b0482e2a4c`, commit hợp nhất Phase 5B. CI của baseline đã thành công trước khi bắt đầu; `AMS-Solution` được fast-forward tới commit đó. Repository vẫn PUBLIC. Không sửa migration V1–V7, dependency hoặc workflow.
+
+### Tám nhóm đăng ký đã rõ thêm điều gì?
+
+Lượt nghiên cứu ngày 29/09/2026 đọc lại 56 đăng ký, 154 điểm thành phần và 39 kết quả tổng kết. Bộ đọc 5A chuẩn hóa chúng thành 49 đăng ký có điểm. Vẫn có tám nhóm cùng môn, cùng số `LANHOC`, nhưng mỗi nhóm gồm hai đăng ký/lớp.
+
+Nút **Chi tiết** cạnh một dòng tổng kết gọi `LayDSDiemThanhPhanTheoTKHP`, truyền ID của chính dòng đó. Đã mở đủ tám dòng tổng kết tương ứng. ID từng điểm thành phần trả về đều tìm được trong bảng điểm thành phần ban đầu; từ đó nối tới đăng ký đã kiểm tra quyền sở hữu. Cả tám lượt đều bao phủ hai lớp trong nhóm và khớp số lần học/lần thi.
+
+Ví dụ tổng hợp, không phải dữ liệu của tài khoản:
+
+```text
+Kết quả tổng kết R
+  ├─ điểm thành phần P1 → đăng ký A → lớp X
+  └─ điểm thành phần P2 → đăng ký B → lớp Y
+```
+
+Điều đã xác minh là các cạnh R → P1/P2 và P1/P2 → A/B. **Chưa có cạnh R → định danh lần học ổn định**. Không dùng R làm khóa StudentCourse: R là định danh kết quả tổng kết, có thể có vòng đời khác lần học.
+
+Trang tra cứu đăng ký bổ sung ngữ cảnh: đã duyệt mười lựa chọn kỳ của chính tài khoản và đối chiếu đủ 56 ID đăng ký. UI hiển thị `THUOCTINHLOP_TEN` như loại lớp, chẳng hạn nhãn lý thuyết, thực hành hoặc học trực tuyến. Bảy nhóm có hai loại lớp khác nhau; một nhóm có cùng loại. Điều này cho thấy không thể giải thích mọi nhóm bằng một quy tắc “một lớp lý thuyết + một lớp thực hành”.
+
+`MANHOMLOP` chỉ được frontend dùng làm tên lớp CSS trong đoạn hiển thị đã đọc, chưa thấy nó được dùng làm khóa lần học. `LOPHOCPHANCHINH` có giá trị 0/1 trong dữ liệu nhưng đoạn UI này không giải thích vòng đời của cờ. Không chọn lớp có cờ 1 làm lần học hoặc gộp chỉ vì mã nhóm giống nhau. Lịch sử đăng ký có 93 hàng, nhưng không cung cấp quan hệ định danh đăng ký cũ → đăng ký thay thế đủ rõ để quyết định trường hợp chuyển/hủy lớp.
+
+**Kết luận cho tám nhóm:** đã xác minh hai đăng ký cùng đóng góp vào một tổng kết; chưa xác minh đầy đủ nguyên nhân nghiệp vụ tạo ra từng cặp, hay một quy tắc định danh lần học dùng được qua mọi trạng thái. Hai nhóm chỉ có điểm thành phần, chưa có tổng kết, cũng không thể dùng endpoint chi tiết này để tìm khóa cha. Không loại chúng khỏi lượt nhập rồi báo phần còn lại thành công.
+
+### Bộ đọc mới lưu giữ bằng chứng gì?
+
+`fetchAcademicResultDetail` là capability đọc, chưa có REST endpoint hoặc giao diện AMS cho thao tác này. Caller cung cấp chương trình và ID kết quả; adapter kiểm tra user ACTIVE và kết nối thuộc user trước khi đọc. HTTP client đọc lại chương trình, điểm và đăng ký của tài khoản. ID kết quả phải có trong observation vừa xác minh, không được lấy một ID bất kỳ rồi gọi endpoint chi tiết.
+
+Mỗi hàng chi tiết phải nối bằng ID tới đúng một điểm thành phần đã đọc. Mapper đối chiếu môn, mã môn, tín chỉ, năm học, học kỳ, kỳ nguồn, lần học, lần thi, loại điểm và giá trị điểm. Các đăng ký có thể khác nhau, nhưng không được thuộc môn/lần học/học kỳ khác với tổng kết đang xem. Không ghép theo tên môn hoặc giá trị điểm giống nhau.
+
+Kết quả trả về là `AcademicResultDetail`: ID tổng kết và các liên kết tới ID điểm thành phần/đăng ký. Nó **không phải** AcademicResult đã persist, cũng không phải danh sách StudentCourse đã được hòa giải. Các `toString` chỉ trả nhãn redacted, không in ID hoặc điểm.
+
+Duplicate ID, ID chưa có trong observation hoặc giá trị thay đổi giữa hai request làm lượt đọc thất bại với `UNEXPECTED_SCHEMA`. Khi nguồn thay đổi trong lúc đọc, dừng an toàn tốt hơn việc nối hai phiên bản dữ liệu không khớp. Chi tiết rỗng được giữ là danh sách rỗng; không suy rằng lần học bị hủy hoặc dữ liệu trước đó phải bị xóa. Độ đầy đủ vẫn chưa được nguồn cam kết.
+
+### Học kỳ: đã có cách chuẩn hóa, chưa có bảng ánh xạ mới
+
+Frontend nhóm tổng kết bằng `NAMHOC` và `HOCKY`, hiển thị rõ năm học và học kỳ. Phase 5C kiểm tra lại logic này: 13 ID kỳ trên điểm tương ứng chín cặp năm–học kỳ; mỗi ID kỳ trong mẫu chỉ thuộc một cặp. Vì vậy nhiều kỳ nguồn có thể cùng thuộc một học kỳ AMS.
+
+`AcademicRecordObservation.Entry.semesterIdentifier()` dùng quy ước `T` + số học kỳ, cùng `academicYearStart`. Ví dụ giả định: năm học 2026–2027, học kỳ 1 → `2026-2027:T1`. `T1` là mã nội bộ, không phải ID hoặc tên kỳ Phenikaa. Bộ đọc kiểm tra năm hợp lệ, hai năm liên tiếp và số học kỳ nguyên dương; không tách học kỳ từ ngày học, tên lớp hoặc nhãn bộ lọc.
+
+Mapper dùng định danh này để phát hiện một ID kỳ điểm bị gắn với nhiều học kỳ khác nhau. Test có hai ID kỳ khác nhau cùng cho `2026-2027:T1`, nhưng vẫn giữ riêng hai đăng ký. Chuẩn hóa học kỳ không tự giải quyết việc gộp lần học.
+
+Chưa tạo bảng mapping vì chưa có luồng ghi học vụ đủ điều kiện. Nếu triển khai sau khi gate đạt, khóa nguồn cần có loại kỳ rõ ràng và cho phép nhiều kỳ điểm → một Semester; không đặt unique trên riêng `(profile_id, semester_id)`. Kỳ đăng ký, kỳ thi, kỳ đào tạo và học kỳ kế hoạch của curriculum vẫn là các phạm vi khác nhau. Ngày bắt đầu/kết thúc chưa biết phải để null, không dùng null để xóa ngày đã biết.
+
+### Vì sao vẫn chưa lưu StudentCourse và AcademicResult?
+
+| Phần cần biết | Bằng chứng hiện có | Điều còn thiếu |
+| --- | --- | --- |
+| Course | V7 đã có mapping theo hồ sơ + source ID; đối chiếu mã/tín chỉ ở 5B | Không tạo danh mục môn riêng cho điểm; phase này không nhập lại catalog |
+| Lần học | UI tách “Lần học” và “Lần thi”; tám tổng kết liên kết điểm từ nhiều đăng ký | Khóa lần học ổn định khi chưa có tổng kết, chuyển lớp hoặc sửa kết quả |
+| Kết quả hiện hành | UI duyệt từng hàng tổng kết theo học kỳ | Không có quy tắc chọn một hàng khi có nhiều kết quả của cùng lần học |
+| Tín chỉ đăng ký học | Có tín chỉ của môn trên đăng ký/điểm | Chưa xác minh tín chỉ ở mức lần học, đặc biệt với nhiều đăng ký góp vào một tổng kết |
+| Tín chỉ đạt | Có tổng tín chỉ tích lũy và trạng thái hoàn thành môn trong khối | Không có tín chỉ đạt riêng gắn với từng lần học đã nhận diện |
+| GPA | Nguồn có điểm quy đổi, điểm chữ và các bảng tổng hợp | Không có cờ tính/không tính GPA của từng lần học đã xác minh |
+
+`LANHOC` là số UI gọi “Lần học”; `LANTHI` là “Lần thi”. Quan hệ mới không cho phép đổi số lần học, dùng lần thi làm lần học hoặc đánh lại 1, 2, 3 để thỏa unique constraint. Cũng không lấy một lớp bất kỳ làm `StudentCourse.sectionId` khi một tổng kết có điểm từ nhiều lớp.
+
+Đoạn tạo bảng tổng kết hiển thị các hàng nguồn, không có bước chọn điểm cao nhất, ngày mới nhất hoặc lần thi lớn nhất. Bảng `rsDiemMoiNhat` được dùng cho phần điểm mới, không chứng minh một quy tắc chọn current AcademicResult cho mỗi lần học. Guard từ 5A vẫn từ chối nhiều kết quả cuối trong cùng đăng ký; chưa thay bằng quy tắc phỏng đoán.
+
+Nguồn tích lũy theo khối có `KETQUA`, được UI hiển thị thành “Hoàn thành”, nhưng hàng đó không có ID lần học/lần thi để nối chắc chắn về từng kết quả. `SODATICHLUY` thuộc bảng tổng hợp khối; không chia ngược tổng này để dựng tín chỉ đạt cho từng lần học. “Đạt” cũng chưa tự động được chuyển thành toàn bộ tín chỉ môn, và “Không đạt” chưa được dùng để tự điền 0.
+
+`DAT`, `KHONGDAT`, `HOCLAI` tiếp tục được giữ như outcome của observation. Chưa ép `RETAKE_REQUIRED` thành `AcademicResult.Status.FAILED`. Điểm số, điểm chữ và điểm quy đổi được giữ đúng nguồn; không tính lại bằng thang 10/4 hoặc tạo GradingPolicy mặc định.
+
+Domain hiện bắt buộc `creditsEarned` và boolean `includedInGpa`. Boolean false có nghĩa “không tính GPA”, không có nghĩa “chưa biết”. Có thể cần sửa representation sau này, nhưng chỉ nới hai field đó vẫn không giải quyết identity và lựa chọn kết quả. Phase này không sửa schema chỉ để ghi được dữ liệu chưa đủ nghĩa.
+
+### Transaction, lỗi và các điều kiện ghi chưa thực hiện
+
+Không có write transaction mới cho học vụ, không có partial import, không xóa dữ liệu vắng mặt. Capability mới đi qua adapter kết nối hiện có; adapter vẫn cập nhật trạng thái/lần truy cập kết nối và giữ transaction qua HTTP. Đây là giới hạn sẵn có của lớp kết nối, **chưa được sửa trong 5C**. Các test lỗi nguồn kiểm tra dữ liệu học vụ không đổi; chỉ `SESSION_EXPIRED` yêu cầu kết nối lại.
+
+Khi có đủ bằng chứng để xây importer, cần tách đọc/kiểm tra nguồn khỏi transaction ghi ngắn, đồng thời kiểm tra lại quyền sở hữu và trạng thái kết nối trước khi ghi. Không sao chép cách giữ khóa user qua toàn bộ HTTP của importer curriculum. Đây là thiết kế dự kiến, không phải một bảo đảm concurrency đã được triển khai.
+
+Không có test import điểm lần đầu/lặp/đồng thời để báo PASS. UUID ổn định qua import, retake persisted, nhiều đăng ký → một StudentCourse persisted và rollback của importer điểm đều chưa được kiểm chứng vì importer chưa tồn tại. Các test domain/persistence tổng hợp cũ vẫn chạy, nhưng không được dùng thay cho việc kiểm chứng semantics Phenikaa.
+
+### Kiểm chứng thật và kiểm thử
+
+Chủ tài khoản tự đăng nhập vào Chrome profile tạm ngoài repository. Chỉ tra cứu dữ liệu thuộc tài khoản; không xác nhận, sửa hoặc hủy đăng ký. Request/response được đối chiếu trong bộ nhớ, không ghi HAR, screenshot hay payload thật thành fixture.
+
+Trình duyệt đọc điểm/đăng ký hai lần: identity của môn, đăng ký, kỳ, thành phần và tổng kết giữ nguyên. Tám chi tiết tổng kết cũng được đọc hai lần, giữ nguyên tập ID thành phần. Đây là độ ổn định của hai lượt đọc cùng mẫu, chưa chứng minh định danh không đổi khi nhà trường chỉnh dữ liệu.
+
+Helper Java tạm dùng đúng `PhenikaaHttpClient` production. Phiên được chuyển một lần qua loopback bằng AES-GCM; khóa AES được bọc RSA-OAEP và fingerprint khóa công khai được đối chiếu trước khi gửi. Không truyền credential trong command line hoặc file.
+
+| Metadata từ lượt Java | Kết quả |
+| --- | --- |
+| recordCount | 49 |
+| semesterCount | 9 |
+| stable | true, hai observation bằng nhau |
+| ambiguous | true |
+| detailComponentCount | 4 |
+| detailRegistrationCount | 2 |
+| success | true |
+| persistencePerformed | false |
+
+Java kiểm chứng một chi tiết tổng kết; tám chi tiết được đối chiếu bằng trình duyệt. Không nói Java đã đọc đủ tám. Không dùng database thật cho lượt đọc này, không có dữ liệu cá nhân làm seed. Integration test PostgreSQL/Redis dùng dữ liệu tổng hợp, không gọi Phenikaa.
+
+Test mới bao gồm chuẩn hóa học kỳ, năm sai, nhiều kỳ nguồn cùng học kỳ, giữ cảnh báo khi cùng môn/lần học/kỳ, liên kết thành phần qua nhiều đăng ký, từ chối khác lần học, duplicate/missing/changed component và `toString` redacted. HTTP test kiểm tra endpoint chi tiết, quyền sở hữu kết quả, rỗng, malformed, duplicate, business failure, unauthorized, redirect, decode, timeout và giới hạn byte. Test kết nối kiểm tra owner, user bị khóa, phiên thiếu capability và lỗi nguồn không tạo/sửa học vụ.
+
+Lượt `mvnw.cmd verify` cuối ngày 29/09/2026 đạt **205 unit/HTTP test và 114 integration test**, không lỗi, thất bại hoặc bỏ qua. Docker chạy PostgreSQL/Redis thật qua Testcontainers; test schema sạch V1–V7 và Hibernate validate vẫn đạt. Không có V8 để kiểm tra nâng cấp V7–V8. Frontend không thay đổi; CI vẫn dùng workflow hiện có, không gọi portal thật.
+
+Trước commit đã đối chiếu 13 file thay đổi và 53 file báo cáo/log với 2.075 chuỗi nguồn/phiên đang có trong bộ nhớ. Các kết quả khớp thuộc host/path HTTP, kiểu nội dung và từ vựng schema/trạng thái đã mô tả, không phải credential hoặc nội dung học tập riêng. Đây là kiểm tra giá trị đã biết kết hợp review nội dung, không phải bảo đảm một phép tìm chuỗi có thể phát hiện mọi secret. Profile/helper tạm nằm ngoài repository; không stage payload, profile, helper hoặc báo cáo runtime.
+
+### Tra cứu endpoint chi tiết
+
+Endpoint mới được quan sát trên portal, vẫn là **PORTAL_INTERNAL_API**, không phải API công khai được trường cam kết hỗ trợ:
+
+- POST `/sinhvienapi3/api/SV_ThongTin_MH/DSA4BRIFKCQsFSkgLykRKSAvFSkkLhUKCREP`.
+- Function: `pkg_congthongtin_hssv_thongtin.LayDSDiemThanhPhanTheoTKHP`.
+- ID cha: `strDiem_NguoiHoc_TongKet_Id`, lấy từ tổng kết thuộc tài khoản vừa đọc.
+- Envelope: `Success`, `Data.B`; giải mã bằng ngữ cảnh phiên đang có.
+- Không thấy phân trang trong lượt UI. Client chặn 10.000 hàng và dùng giới hạn byte/timeout transport hiện có, không cắt bớt danh sách.
+
+Frontend hiện gọi endpoint này khi bấm chi tiết. Hàm popover cũ có đoạn lọc theo môn/lần học/lần thi nhưng không phải handler đang dùng; không lấy code cũ đó làm bằng chứng gộp.
+
+### Trạng thái nghiệm thu và phần còn lại
+
+| Gate | Trạng thái | Phạm vi |
+| --- | --- | --- |
+| SEMESTER_MAPPING | BLOCKED_PARTIAL | Chuẩn hóa identity đã kiểm chứng; chưa persist Semester/mapping |
+| LEARNING_ATTEMPT_MODEL | BLOCKED_PARTIAL | Có quan hệ tổng kết–thành phần, chưa có identity xuyên vòng đời |
+| REGISTRATION_TO_STUDENTCOURSE | BLOCKED_PARTIAL | Không áp đặt một-một, chưa tạo StudentCourse |
+| STUDENT_COURSE_PERSISTENCE | BLOCKED_PARTIAL | Thiếu identity và semantics tín chỉ lần học |
+| FINAL_RESULT_SELECTION | BLOCKED_PARTIAL | Chưa có quy tắc current/effective khi nhiều kết quả |
+| CREDITS_EARNED | BLOCKED_PARTIAL | Chưa có fact/rule ở mức từng lần học |
+| GPA_INCLUSION | BLOCKED_PARTIAL | UNKNOWN không bị biến thành false |
+| ACADEMIC_RESULT_PERSISTENCE | BLOCKED_PARTIAL | Chưa đủ gate, không importer/migration |
+| EXAM_TO_STUDENTCOURSE | UNRESOLVED | Chưa có StudentCourse đúng để nối; không ghép bằng ngày thi |
+| SCHEDULE_TO_STUDENTCOURSE | PARTIALLY_RESOLVED | Quan hệ tới lớp/đăng ký từ 4C còn giá trị, chưa tới StudentCourse đã xác minh |
+| PHASE_5C_OVERALL | PARTIAL | Bộ đọc mới đã kiểm chứng; chưa đạt mục tiêu persistence |
+| PHASE_5_OVERALL | PARTIAL | Curriculum/catalog đã lưu trong phạm vi 5B, điểm/lần học chưa lưu |
+
+Không đọc lại lịch/thi thật trong lượt 5C này; hai bridge giữ giới hạn đã ghi ở 4C/5A, không được nâng hạng nhờ đọc thêm chi tiết điểm. `IDLICHHOC` lặp qua nhiều ngày vẫn chưa thể làm khóa buổi học. Không tạo Exam/ClassSession hoặc ghép ngày/giờ/phòng thành khóa.
+
+Để mở gate còn cần nguồn giải thích identity lần học qua các trạng thái, quan hệ khi chưa có tổng kết, cách chọn tổng kết hiện hành và fact/rule tín chỉ đạt/GPA. Không cần người dùng gửi thêm credential; không cần đổi constraint bằng một quyết định tùy ý để vượt những chỗ thiếu bằng chứng.
+
+Giữ nguyên `PREREQUISITE_SOURCE = PARTIAL`, `PREREQUISITE_PERSISTENCE = BLOCKED_PARTIAL`; không nghiên cứu tiếp tiên quyết, không ép phân loại ba môn chưa rõ nhóm, không tự chọn curriculum hiện hành. Chưa bắt đầu 4D, Phase 6, GPA engine, worker, change detection, Google Calendar hoặc email.

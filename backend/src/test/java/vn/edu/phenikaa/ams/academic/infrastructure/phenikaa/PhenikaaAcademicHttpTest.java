@@ -32,6 +32,8 @@ class PhenikaaAcademicHttpTest {
     private volatile String records = AcademicSourceFixtures.records();
     private volatile String registrations = AcademicSourceFixtures.registrations();
     private volatile HttpHandler override;
+    private volatile HttpHandler detailOverride;
+    private volatile String detail = "[" + AcademicSourceFixtures.component(1) + "]";
 
     @BeforeEach void start() throws IOException {
         server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
@@ -45,11 +47,16 @@ class PhenikaaAcademicHttpTest {
                     override.handle(exchange);
                     return;
                 }
+                if (detailOverride != null && path.equals(PhenikaaHttpTransport.ACADEMIC_RESULT_DETAIL_PATH)) {
+                    detailOverride.handle(exchange);
+                    return;
+                }
                 String data = switch (path) {
                     case PhenikaaHttpTransport.ACADEMIC_PROGRAMS_PATH -> programs;
                     case PhenikaaHttpTransport.ACADEMIC_PERIODS_PATH -> periods;
                     case PhenikaaHttpTransport.ACADEMIC_RECORDS_PATH -> records;
                     case PhenikaaHttpTransport.ACADEMIC_REGISTRATIONS_PATH -> registrations;
+                    case PhenikaaHttpTransport.ACADEMIC_RESULT_DETAIL_PATH -> detail;
                     default -> throw new AssertionError("Unexpected test path");
                 };
                 reply(exchange, 200, envelope(data));
@@ -71,7 +78,8 @@ class PhenikaaAcademicHttpTest {
             String body = new String(exchange.getRequestBody().readAllBytes(), StandardCharsets.UTF_8);
             var params = json.readTree(codec.decodeResponse(URLDecoder.decode(body.substring(2), StandardCharsets.UTF_8),
                     path.substring(path.lastIndexOf('/') + 1)));
-            assertThat(params.path("strQLSV_NguoiHoc_Id").asString()).isEqualTo("synthetic-learner");
+            if (!path.equals(PhenikaaHttpTransport.ACADEMIC_RESULT_DETAIL_PATH))
+                assertThat(params.path("strQLSV_NguoiHoc_Id").asString()).isEqualTo("synthetic-learner");
             assertThat(params.path("strNguoiThucHien_Id").asString()).isEqualTo("synthetic-learner");
             assertThat(params.path("strChucNang_Id").asString()).isEqualTo("synthetic-academic-function");
             assertThat(params.path("action").asString()).isEqualTo(path.substring("/sinhvienapi3/api/".length()));
@@ -80,10 +88,15 @@ class PhenikaaAcademicHttpTest {
                 case PhenikaaHttpTransport.ACADEMIC_PERIODS_PATH -> "LayDSThoiGianLichHoc";
                 case PhenikaaHttpTransport.ACADEMIC_RECORDS_PATH -> "KetQuaHocTapCaNhan";
                 case PhenikaaHttpTransport.ACADEMIC_REGISTRATIONS_PATH -> "LayKetQuaDangKyHocCaNhan";
+                case PhenikaaHttpTransport.ACADEMIC_RESULT_DETAIL_PATH -> "LayDSDiemThanhPhanTheoTKHP";
                 default -> throw new AssertionError();
             };
             assertThat(params.path("func").asString()).isEqualTo("pkg_congthongtin_hssv_thongtin." + function);
-            if (path.equals(PhenikaaHttpTransport.ACADEMIC_RECORDS_PATH)) {
+            if (path.equals(PhenikaaHttpTransport.ACADEMIC_RESULT_DETAIL_PATH)) {
+                assertThat(params.path("strDiem_NguoiHoc_TongKet_Id").asString()).isEqualTo("synthetic-final-1");
+                assertThat(params.size()).isEqualTo(6);
+                assertThat(params.has("strQLSV_NguoiHoc_Id")).isFalse();
+            } else if (path.equals(PhenikaaHttpTransport.ACADEMIC_RECORDS_PATH)) {
                 assertThat(params.path("strDaoTao_ChuongTrinh_Id").asString()).isEqualTo("synthetic-program");
                 assertThat(params.size()).isEqualTo(7);
             } else if (path.equals(PhenikaaHttpTransport.ACADEMIC_REGISTRATIONS_PATH)) {
@@ -163,6 +176,50 @@ class PhenikaaAcademicHttpTest {
     private void failure(PhenikaaClientException.Code code) {
         assertThatThrownBy(() -> client.fetchAcademicRecords(session, program)).isInstanceOf(PhenikaaClientException.class)
                 .hasMessage(code.name()).hasNoCause();
+    }
+    @Test void readsResultDetailOnlyAfterRevalidatingProgramRecordsAndRegistrations() {
+        var result = client.fetchAcademicResultDetail(session, program, "synthetic-final-1");
+        assertThat(result.components()).containsExactly(new AcademicResultDetail.ComponentLink("synthetic-registration-1", "synthetic-component-1"));
+        assertThat(paths).containsExactly(PhenikaaHttpTransport.ACADEMIC_PROGRAMS_PATH, PhenikaaHttpTransport.ACADEMIC_RECORDS_PATH,
+                PhenikaaHttpTransport.ACADEMIC_REGISTRATIONS_PATH, PhenikaaHttpTransport.ACADEMIC_RESULT_DETAIL_PATH);
+    }
+    @Test void rejectsUnownedResultBeforeDetailRequest() {
+        assertThatThrownBy(() -> client.fetchAcademicResultDetail(session, program, "other-result")).hasMessage("UNEXPECTED_SCHEMA");
+        assertThat(paths).doesNotContain(PhenikaaHttpTransport.ACADEMIC_RESULT_DETAIL_PATH);
+    }
+    @Test void emptyDetailDoesNotInventAnyLinks() {
+        detail = "[]";
+        assertThat(client.fetchAcademicResultDetail(session, program, "synthetic-final-1").components()).isEmpty();
+    }
+    @ParameterizedTest @ValueSource(strings = {"{}", "null", "[{}]"})
+    void rejectsMalformedDetail(String input) { detail = input; detailFailure(UNEXPECTED_SCHEMA); }
+    @Test void rejectsDuplicateDetailComponents() {
+        detail = "[" + AcademicSourceFixtures.component(1) + "," + AcademicSourceFixtures.component(1) + "]";
+        detailFailure(UNEXPECTED_SCHEMA);
+    }
+    @Test void detailBusinessFailureDoesNotExposeSourceMessage() {
+        detailOverride = e -> reply(e, 200, "{\"Success\":false,\"Message\":\"synthetic-private-detail\"}"); detailFailure(BUSINESS_FAILURE);
+    }
+    @Test void detailUnauthorizedRequiresReconnect() { detailOverride = e -> reply(e, 401, "{}"); detailFailure(SESSION_EXPIRED); }
+    @Test void detailRedirectIsNotFollowed() {
+        detailOverride = e -> { e.getResponseHeaders().add("Location", "/conggiangvien/login.aspx"); reply(e, 302, "{}"); };
+        detailFailure(SESSION_EXPIRED); assertThat(paths).hasSize(4);
+    }
+    @Test void detailDecodeFailureIsSafe() {
+        detailOverride = e -> reply(e, 200, "{\"Success\":true,\"Data\":{\"B\":\"invalid!\"}}"); detailFailure(DECODE_ERROR);
+    }
+    @Test void detailResponseHasByteLimit() { detailOverride = e -> reply(e, 200, "x".repeat(33000)); detailFailure(RESPONSE_TOO_LARGE); }
+    @Test void detailResponseHasTimeLimit() {
+        detailOverride = e -> {
+            e.getResponseHeaders().add("Content-Type", "application/json"); e.sendResponseHeaders(200, 0);
+            e.getResponseBody().write('{'); e.getResponseBody().flush();
+            try { Thread.sleep(1800); } catch (InterruptedException ex) { Thread.currentThread().interrupt(); }
+        };
+        detailFailure(TIMEOUT);
+    }
+    private void detailFailure(PhenikaaClientException.Code code) {
+        assertThatThrownBy(() -> client.fetchAcademicResultDetail(session, program, "synthetic-final-1"))
+                .isInstanceOf(PhenikaaClientException.class).hasMessage(code.name()).hasNoCause();
     }
     private String envelope(String data) {
         return json.writeValueAsString(Map.of("Success", true, "Data", Map.of("B", codec.encodeRequest(data, "synthetic-key"))));

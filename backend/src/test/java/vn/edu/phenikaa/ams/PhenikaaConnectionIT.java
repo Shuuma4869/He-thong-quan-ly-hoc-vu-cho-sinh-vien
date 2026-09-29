@@ -92,18 +92,23 @@ class PhenikaaConnectionIT {
         when(http.fetchAcademicPrograms(any())).thenReturn(java.util.List.of(program));
         when(http.fetchAcademicPeriods(any())).thenReturn(java.util.List.of(period));
         when(http.fetchAcademicRecords(any(), eq(program))).thenReturn(observation);
+        var detail = new AcademicResultDetail("synthetic-result", java.util.List.of());
+        when(http.fetchAcademicResultDetail(any(), eq(program), eq("synthetic-result"))).thenReturn(detail);
         clearInvocations(http);
         assertThatThrownBy(() -> portal.fetchAcademicPrograms(other.getId(), connection)).hasMessage("CONNECTION_UNAVAILABLE");
         assertThatThrownBy(() -> portal.fetchAcademicPeriods(other.getId(), connection)).hasMessage("CONNECTION_UNAVAILABLE");
         assertThatThrownBy(() -> portal.fetchAcademicRecords(other.getId(), connection, program)).hasMessage("CONNECTION_UNAVAILABLE");
+        assertThatThrownBy(() -> portal.fetchAcademicResultDetail(other.getId(), connection, program, "synthetic-result")).hasMessage("CONNECTION_UNAVAILABLE");
         verifyNoInteractions(http);
         assertThat(portal.fetchAcademicPrograms(owner.getId(), connection)).containsExactly(program);
         assertThat(portal.fetchAcademicPeriods(owner.getId(), connection)).containsExactly(period);
         assertThat(portal.fetchAcademicRecords(owner.getId(), connection, program)).isEqualTo(observation);
+        assertThat(portal.fetchAcademicResultDetail(owner.getId(), connection, program, "synthetic-result")).isEqualTo(detail);
         assertThat(profiles.findByUserId(owner.getId())).isEmpty();
         jdbc.update("update app_user set account_status = 'DISABLED' where id = ?", owner.getId());
         clearInvocations(http);
         assertThatThrownBy(() -> portal.fetchAcademicRecords(owner.getId(), connection, program)).hasMessage("CONNECTION_UNAVAILABLE");
+        assertThatThrownBy(() -> portal.fetchAcademicResultDetail(owner.getId(), connection, program, "synthetic-result")).hasMessage("CONNECTION_UNAVAILABLE");
         verifyNoInteractions(http);
     }
 
@@ -111,6 +116,8 @@ class PhenikaaConnectionIT {
         var connection = connect();
         clearInvocations(http);
         assertThatThrownBy(() -> portal.fetchAcademicPeriods(owner.getId(), connection)).hasMessage("CONNECTION_UNAVAILABLE");
+        assertThatThrownBy(() -> portal.fetchAcademicResultDetail(owner.getId(), connection,
+                new AcademicProgram("synthetic-program", "Giả định"), "synthetic-result")).hasMessage("CONNECTION_UNAVAILABLE");
         verifyNoInteractions(http);
         assertThat(portal.status(owner.getId()).status()).isEqualTo(PhenikaaConnection.Status.CONNECTED);
         assertThat(imports.importCurrentProfile(owner.getId())).isNotNull();
@@ -128,6 +135,22 @@ class PhenikaaConnectionIT {
         assertThat(jdbc.queryForObject("select id from course where profile_id = ?", UUID.class, profile)).isEqualTo(course);
         assertThat(portal.status(owner.getId()).reconnectionRequired()).isEqualTo(code == PhenikaaClientException.Code.SESSION_EXPIRED);
         assertThat(portal.status(owner.getId()).lastFailureCode().name()).isEqualTo(code.name());
+    }
+
+    @ParameterizedTest @EnumSource(PhenikaaClientException.Code.class)
+    void detailFailurePreservesAcademicRowsAndOnlyExpiryRequiresReconnection(PhenikaaClientException.Code code) {
+        var connection = connectWithAcademics();
+        UUID profile = imports.importCurrentProfile(owner.getId());
+        UUID course = UUID.randomUUID();
+        jdbc.update("insert into course(id,profile_id,code,name,credits) values (?,?,'TEST101','Môn giả định',3)", course, profile);
+        var program = new AcademicProgram("synthetic-program", "Giả định");
+        when(http.fetchAcademicResultDetail(any(), eq(program), eq("synthetic-result"))).thenThrow(new PhenikaaClientException(code));
+        assertThatThrownBy(() -> portal.fetchAcademicResultDetail(owner.getId(), connection, program, "synthetic-result"))
+                .hasMessage(code.name()).hasNoCause();
+        assertThat(jdbc.queryForObject("select id from course where profile_id = ?", UUID.class, profile)).isEqualTo(course);
+        assertThat(jdbc.queryForObject("select count(*) from student_course where profile_id = ?", Integer.class, profile)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from academic_result where profile_id = ?", Integer.class, profile)).isZero();
+        assertThat(portal.status(owner.getId()).reconnectionRequired()).isEqualTo(code == PhenikaaClientException.Code.SESSION_EXPIRED);
     }
 
     @Test void examCapabilityUsesOwnedEncryptedContextAndDoesNotCreateAcademicRecords() {

@@ -6,7 +6,7 @@ AMS hỗ trợ sinh viên theo dõi kết quả học tập, chương trình đ�
 
 AMS là dự án cá nhân, không phải hệ thống chính thức của Phenikaa University và không đại diện cho nhà trường. Các tích hợp chỉ làm việc với dữ liệu mà tài khoản người dùng được phép truy cập.
 
-> Đã có tài khoản AMS, đăng nhập bằng session, cài đặt cá nhân và domain/database học vụ. Phase 5B bổ sung bộ đọc và nhập chương trình đào tạo, danh mục môn, tín chỉ và nhóm môn đã xác minh. Nhập lặp giữ nguyên định danh; phần chưa rõ nhóm không bị tự gán bắt buộc/tự chọn. **Chưa lưu điều kiện tiên quyết hoặc tự chọn chương trình hiện tại cho hồ sơ.** Điểm, lịch học và lịch thi vẫn chưa được nhập vì quan hệ nguồn chưa đủ rõ. Chưa tính GPA, chưa có giao diện kết nối Phenikaa; tính năng backend mặc định tắt. Google Calendar và email chưa kết nối; dashboard vẫn là giao diện nền. Xem [kết quả và giới hạn Phase 5B](docs/phenikaa-integration.md#phase-5b-chương-trình-đào-tạo-danh-mục-môn-và-nhóm-môn).
+> Đã có tài khoản AMS, đăng nhập bằng session, cài đặt cá nhân và domain/database học vụ. Phase 5B đã nhập chương trình đào tạo, danh mục môn và nhóm môn trong phạm vi xác minh. Phase 5C bổ sung bộ đọc liên kết tổng kết–điểm thành phần và chuẩn hóa học kỳ; đã đối chiếu tám nhóm có điểm từ nhiều đăng ký. **Chưa lưu lần học hoặc kết quả học tập** vì identity, lựa chọn kết quả hiện hành, tín chỉ đạt và GPA còn thiếu bằng chứng. Chưa lưu lịch/thi, tiên quyết hoặc tự chọn chương trình hiện tại. Chưa có giao diện kết nối Phenikaa; tính năng backend mặc định tắt. Google Calendar và email chưa kết nối; dashboard vẫn là giao diện nền. Xem [kết quả và giới hạn Phase 5C](docs/phenikaa-integration.md#phase-5c-đối-chiếu-lần-học-và-chi-tiết-kết-quả).
 
 ## Phạm vi chính
 

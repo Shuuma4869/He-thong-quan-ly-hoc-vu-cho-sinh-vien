@@ -118,6 +118,12 @@ public class PhenikaaAcademicPortalClient implements AcademicPortalClient {
         return material.academic();
     }
 
+    @Override public AcademicResultDetail fetchAcademicResultDetail(UUID userId, StudentConnectionId connectionId,
+                                                                     AcademicProgram program, String sourceResultId) {
+        return access(userId, connectionId,
+                material -> http.fetchAcademicResultDetail(academicSession(material), program, sourceResultId));
+    }
+
     private <T> T access(UUID userId, StudentConnectionId id, Function<PhenikaaSessionMaterial, T> operation) {
         lockActiveUser(userId);
         var connection = connections.findByIdAndUserId(id.value(), userId)

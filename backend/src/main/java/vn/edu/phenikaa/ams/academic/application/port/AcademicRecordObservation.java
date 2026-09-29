@@ -4,6 +4,7 @@ import java.math.BigDecimal;
 import java.util.List;
 import java.util.Objects;
 import java.util.HashSet;
+import vn.edu.phenikaa.ams.academic.domain.Semester;
 
 /** Observed attempts with scores, not a complete inventory of all registrations. */
 public record AcademicRecordObservation(AcademicProgram program, List<Entry> entries) {
@@ -27,6 +28,10 @@ public record AcademicRecordObservation(AcademicProgram program, List<Entry> ent
                         String sourcePeriodId, int academicYearStart, int semesterNumber,
                         int reportedLearningAttempt, List<Component> components, FinalResult result) {
         public Entry { components = List.copyOf(components); }
+        public Semester.Identifier semesterIdentifier() {
+            if (semesterNumber <= 0) throw new IllegalArgumentException("Semester number must be positive");
+            return new Semester.Identifier(academicYearStart, "T" + semesterNumber);
+        }
         @Override public String toString() { return "AcademicRecordEntry[redacted]"; }
     }
     public record Component(String sourceId, String code, String name, int examAttempt, BigDecimal score) {
