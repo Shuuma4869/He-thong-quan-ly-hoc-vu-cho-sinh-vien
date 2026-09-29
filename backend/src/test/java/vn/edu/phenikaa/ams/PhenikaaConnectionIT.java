@@ -112,6 +112,22 @@ class PhenikaaConnectionIT {
         verifyNoInteractions(http);
     }
 
+    @Test void academicReadDoesNotHoldDatabaseTransactionAcrossPortalCall() {
+        var connection = connectWithAcademics();
+        var program = new AcademicProgram("synthetic-program", "Chương trình giả định");
+        when(http.fetchAcademicRecords(any(), eq(program))).thenAnswer(invocation -> {
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager
+                    .isActualTransactionActive()).isFalse();
+            return new AcademicRecordObservation(program, java.util.List.of());
+        });
+        assertThat(portal.fetchAcademicRecords(owner.getId(), connection, program).entries()).isEmpty();
+        assertThat(portal.status(owner.getId()).lastSuccessfulAccessAt()).isNotNull();
+        assertThat(jdbc.queryForObject("select count(*) from student_course where profile_id in "
+                + "(select id from student_profile where user_id = ?)", Integer.class, owner.getId())).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from academic_result where profile_id in "
+                + "(select id from student_profile where user_id = ?)", Integer.class, owner.getId())).isZero();
+    }
+
     @Test void legacySessionDoesNotGainAcademicCapabilityOrLoseItsProfileCapability() {
         var connection = connect();
         clearInvocations(http);

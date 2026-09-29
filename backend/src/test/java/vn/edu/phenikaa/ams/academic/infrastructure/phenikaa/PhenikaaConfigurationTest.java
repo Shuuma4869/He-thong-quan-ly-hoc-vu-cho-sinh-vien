@@ -18,7 +18,11 @@ class PhenikaaConfigurationTest {
             .withBean(UserRepository.class, () -> mock(UserRepository.class))
             .withBean(StudentProfileRepository.class, () -> mock(StudentProfileRepository.class))
             .withBean(jakarta.persistence.EntityManager.class, () -> mock(jakarta.persistence.EntityManager.class))
-            .withBean(org.springframework.jdbc.core.JdbcTemplate.class, () -> mock(org.springframework.jdbc.core.JdbcTemplate.class));
+            .withBean(org.springframework.jdbc.core.JdbcTemplate.class, () -> mock(org.springframework.jdbc.core.JdbcTemplate.class))
+            .withBean(org.springframework.data.redis.core.StringRedisTemplate.class,
+                    () -> mock(org.springframework.data.redis.core.StringRedisTemplate.class))
+            .withBean(org.springframework.transaction.PlatformTransactionManager.class,
+                    () -> mock(org.springframework.transaction.PlatformTransactionManager.class));
 
     @Test void disabledFeatureDoesNotRequireAKeyOrCreateAClient() {
         context.run(result -> {

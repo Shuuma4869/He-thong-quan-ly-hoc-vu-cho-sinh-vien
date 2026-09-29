@@ -72,6 +72,7 @@ ams:
     connect-timeout: ${AMS_PHENIKAA_CONNECT_TIMEOUT:8s}
     response-timeout: ${AMS_PHENIKAA_RESPONSE_TIMEOUT:15s}
     max-response-bytes: ${AMS_PHENIKAA_MAX_RESPONSE_BYTES:2097152}
+    read-cooldown: ${AMS_PHENIKAA_READ_COOLDOWN:5s}
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
   sync:

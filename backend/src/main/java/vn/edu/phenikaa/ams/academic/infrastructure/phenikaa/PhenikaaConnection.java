@@ -62,6 +62,7 @@ public class PhenikaaConnection {
     byte[] encryptedSubject() { return encryptedSubject.clone(); }
     int keyVersion() { return encryptionKeyVersion; }
     Status status() { return status; }
+    Instant authenticatedAt() { return lastAuthenticatedAt; }
     public ConnectionView view() {
         return new ConnectionView(status, lastAuthenticatedAt, lastSuccessfulAccessAt,
                 lastFailedAccessAt, lastFailureCode, status == Status.RECONNECTION_REQUIRED);
