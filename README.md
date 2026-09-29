@@ -6,7 +6,7 @@ AMS hỗ trợ sinh viên theo dõi kết quả học tập, chương trình đ�
 
 AMS là dự án cá nhân, không phải hệ thống chính thức của Phenikaa University và không đại diện cho nhà trường. Các tích hợp chỉ làm việc với dữ liệu mà tài khoản người dùng được phép truy cập.
 
-> Đã có tài khoản AMS, đăng nhập bằng session, cài đặt cá nhân và domain/database học vụ. Phase 5B đã nhập chương trình đào tạo, danh mục môn và nhóm môn trong phạm vi xác minh. Phase 5C bổ sung bộ đọc liên kết tổng kết–điểm thành phần và chuẩn hóa học kỳ. Phase 5D đã đối chiếu thêm màn hình tra cứu và quy chế đào tạo năm 2023/2026, rồi chốt giới hạn dữ liệu nguồn. **Chưa lưu lần học hoặc kết quả học tập** vì chưa đủ căn cứ chọn kết quả hiện hành và xác định tín chỉ/GPA cho từng lần học. Chưa lưu lịch/thi, tiên quyết hoặc tự chọn chương trình hiện tại. Chưa có giao diện kết nối Phenikaa; tính năng backend mặc định tắt. Google Calendar và email chưa kết nối; dashboard vẫn là giao diện nền. Xem [kết luận Phase 5D](docs/phenikaa-integration.md#phase-5d-kết-luận-nghiên-cứu-ngữ-nghĩa-kết-quả-học-tập).
+> Đã có tài khoản AMS, đăng nhập bằng session, cài đặt cá nhân và domain/database học vụ. Chương trình đào tạo, danh mục môn và nhóm môn đã được nhập trong phạm vi xác minh. Phase 5E mở API có xác thực để đọc trực tiếp kết quả học tập và chi tiết từ nguồn, với giới hạn dữ liệu được trả về rõ ràng. **Chưa lưu lần học hoặc kết quả học tập** vì chưa đủ căn cứ chọn kết quả hiện hành và xác định tín chỉ/GPA cho từng lần học. Chưa lưu lịch/thi, tiên quyết hoặc tự chọn chương trình hiện tại. Chưa có giao diện kết nối Phenikaa; tính năng backend mặc định tắt. Google Calendar và email chưa kết nối; dashboard vẫn là giao diện nền. Xem [ranh giới đọc dữ liệu Phase 5E](docs/phenikaa-integration.md#phase-5e-api-đọc-trực-tiếp-và-ranh-giới-nguồn).
 
 ## Phạm vi chính
 
@@ -65,6 +65,8 @@ pnpm dev
 Mở `/register` để tạo tài khoản sinh viên, sau đó đăng nhập tại `/login`. Không có tài khoản admin mặc định. `/settings` lưu email nhận thông báo, múi giờ, ngôn ngữ ưu tiên và giao diện; email chưa được xác minh và chưa dùng để gửi thông báo.
 
 Phần Phenikaa không tự kết nối khi chạy local. Không cần điền khóa để dùng tài khoản AMS. Nếu phát triển luồng nhập hồ sơ, đọc trước [cấu hình khóa, giới hạn cấp phiên và kết quả Phase 4B](docs/phenikaa-integration.md#phase-4b-kết-nối-mã-hóa-và-nhập-hồ-sơ); không sao chép token từ DevTools vào source hoặc `.env.example`.
+
+Khi đã có kết nối Phenikaa được cấp qua quy trình nội bộ, backend bật tính năng sẽ có các endpoint `/api/me/academic/source/...` để đọc chương trình và kết quả của chính tài khoản AMS. Chúng **không** tạo `StudentCourse` hoặc `AcademicResult`, không bảo đảm nguồn trả đủ mọi hàng và hiện chưa có màn hình học vụ hoàn chỉnh. Không bật tính năng chỉ để thử API nếu chưa có khóa mã hóa và kết nối hợp lệ.
 
 [Kết quả Phase 4C](docs/phenikaa-integration.md#phase-4c-lịch-học-và-lịch-thi) giải thích vì sao đọc được lịch chưa đồng nghĩa với lưu được lịch đúng. Đặc biệt, `IDLICHHOC` đã xuất hiện ở nhiều ngày khác nhau; không dùng riêng mã này làm định danh từng buổi học.
 
