@@ -25,4 +25,5 @@ public class Course extends AcademicEntity {
     public String getCode() { return code; }
     public String getName() { return name; }
     public BigDecimal getCredits() { return credits; }
+    public void updateName(String name) { this.name = AcademicValues.text(name, 240); }
 }

@@ -9,7 +9,7 @@ import java.util.UUID;
 public class Curriculum extends AcademicEntity {
     @Column(nullable = false, length = 40)
     private String code;
-    @Column(nullable = false, length = 40)
+    @Column(length = 40)
     private String revision;
     @Column(nullable = false, length = 240)
     private String name;
@@ -22,7 +22,7 @@ public class Curriculum extends AcademicEntity {
     public Curriculum(UUID profileId, String code, String revision, String name, String cohort, BigDecimal minimumCredits) {
         super(profileId);
         this.code = AcademicValues.text(code, 40);
-        this.revision = AcademicValues.text(revision, 40);
+        this.revision = AcademicValues.optionalText(revision, 40);
         this.name = AcademicValues.text(name, 240);
         this.cohort = AcademicValues.optionalText(cohort, 40);
         this.minimumCredits = AcademicValues.decimal(minimumCredits, 6);
@@ -32,4 +32,9 @@ public class Curriculum extends AcademicEntity {
     public String getName() { return name; }
     public String getCohort() { return cohort; }
     public BigDecimal getMinimumCredits() { return minimumCredits; }
+    public void updateMetadata(String name, String cohort, BigDecimal minimumCredits) {
+        this.name = AcademicValues.text(name, 240);
+        if (cohort != null) this.cohort = AcademicValues.optionalText(cohort, 40);
+        this.minimumCredits = AcademicValues.decimal(minimumCredits, 6);
+    }
 }

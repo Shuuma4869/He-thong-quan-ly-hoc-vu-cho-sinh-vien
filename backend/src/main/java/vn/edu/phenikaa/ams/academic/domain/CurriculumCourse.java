@@ -28,12 +28,13 @@ public class CurriculumCourse extends AcademicEntity {
         super(curriculum.getProfileId());
         AcademicValues.sameProfile(getProfileId(), course);
         this.requirement = Objects.requireNonNull(requirement);
-        if ((requirement == Requirement.ELECTIVE) != (group != null))
-            throw new IllegalArgumentException("Only elective courses require an elective group");
+        if (requirement == Requirement.ELECTIVE && group == null)
+            throw new IllegalArgumentException("Elective courses require a group");
         if (group != null) {
             AcademicValues.sameProfile(getProfileId(), group);
             if (!group.getCurriculumId().equals(curriculum.getId()))
                 throw new IllegalArgumentException("Elective group must belong to the curriculum");
+            if (group.getRequirement() != requirement) throw new IllegalArgumentException("Course and group requirements must match");
         }
         if (recommendedTerm != null && recommendedTerm <= 0) throw new IllegalArgumentException("Invalid recommended term");
         this.curriculumId = curriculum.getId();

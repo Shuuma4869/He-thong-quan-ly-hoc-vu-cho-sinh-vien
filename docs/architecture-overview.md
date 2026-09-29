@@ -74,3 +74,19 @@ Chưa có `AcademicRecordImportService`, source mapping table hoặc migration m
 Điểm thành phần không biến thành kết quả cuối môn. Outcome chuẩn hóa giữ riêng PASSED, FAILED và RETAKE_REQUIRED theo mã nguồn đã quan sát; chưa ép chúng vào enum domain hoặc tự tính tín chỉ đạt. Một đăng ký có nhiều kết quả cuối cũng chưa có quy tắc chọn hợp lệ; client hiện dừng thay vì tự chọn điểm cao nhất/mới nhất.
 
 Payload phiên bản 3 thêm mã chức năng học tập riêng, vẫn đọc được phiên bản 1 và 2; AAD/khóa không đổi. Phiên cũ thiếu ngữ cảnh học tập chỉ không dùng được khả năng mới, không bị đánh dấu hết hạn. Không có scheduler, distributed lock, importer chương trình đầy đủ, importer lịch hoặc change detection trong 5A.
+
+## Nhập chương trình và danh mục môn trong Phase 5B
+
+`AcademicPortalClient` thêm ba khả năng riêng: `fetchCurricula` đọc lựa chọn chương trình của tài khoản, `fetchCurriculum` đọc môn/nhóm và `fetchCourseRelations` đọc mô tả điều kiện giữa các môn. Bộ đọc luôn kiểm tra lại chương trình thuộc tài khoản trước khi dùng ID nguồn. Quan hệ môn chỉ được đọc khi môn nằm trong danh mục của chương trình đó; kết quả chưa phải quy tắc đủ điều kiện đăng ký học.
+
+`PhenikaaCurriculumReader` lo request, phân trang có giới hạn và giải mã. `PhenikaaCurriculumMapper` kiểm tra cấu trúc, quyền sở hữu ở dữ liệu nguồn, tín chỉ và quan hệ nhóm rồi tạo observation bất biến. Domain không biết tên trường JSON hoặc đường dẫn API Phenikaa. Các observation không in dữ liệu nguồn qua `toString`.
+
+Luồng ghi hiện tại là `CurriculumImportService` → kết nối của user ACTIVE → hồ sơ của chính user → observation → `PhenikaaCurriculumStore`. Store dùng EntityManager cho entity domain và JdbcTemplate cho ba bảng ánh xạ nguồn có kiểu rõ ràng. Không thêm repository/CRUD riêng cho từng bảng chỉ để thao tác lưu. Importer chưa được mở thành API; không có endpoint nhận user ID hoặc credential do client gửi.
+
+Toàn bộ lượt nhập giữ khóa hàng user trong một transaction, kế thừa cơ chế nhập hồ sơ. Vì vậy, hai lượt nhập cùng user được xử lý lần lượt; constraint trong PostgreSQL là lớp bảo vệ bổ sung. Cách này đủ cho use case hiện tại nhưng giữ khóa cả trong thời gian gọi portal. Giới hạn số request không thay thế thời hạn cho toàn bộ một tác vụ; chưa phù hợp để tự coi đây là worker đồng bộ nền.
+
+Nguồn chưa chứng minh đã trả đủ mọi phiên bản/chương trình, nên observation luôn có `completeness=UNKNOWN`. Import chỉ thêm/cập nhật những gì đã thấy, không xóa hàng vắng mặt, không bỏ lựa chọn curriculum cũ. Môn cùng ID nguồn/mã dùng lại UUID trong phạm vi hồ sơ; trùng mã nhưng khác ID hoặc thay đổi tín chỉ gây lỗi và rollback. Đổi nhóm cũng chưa được tự xử lý. Đây là chủ ý để dữ liệu nguồn chưa rõ không âm thầm thay đổi dữ liệu đã lưu.
+
+Phiên bản 4 của payload mã hóa thêm mã chức năng curriculum, vẫn đọc được phiên bản 1–3. AAD và khóa không đổi; thiếu capability mới không làm phiên cũ bị coi là hết hạn. Không thay đổi đăng nhập AMS, cookie, CSRF hoặc allowlist HTTP.
+
+Không tự chọn chương trình cho hồ sơ vì selector chưa xác nhận đâu là chương trình hiện hành. Không lưu tiên quyết vì mẫu thật có điều kiện điểm tối thiểu, trong khi model hiện chỉ biểu diễn quan hệ từng cặp môn. Không lưu điểm, StudentCourse, Semester, lịch hoặc tạo scheduler. Xem [bằng chứng và giới hạn 5B](phenikaa-integration.md#phase-5b-chương-trình-đào-tạo-danh-mục-môn-và-nhóm-môn).
