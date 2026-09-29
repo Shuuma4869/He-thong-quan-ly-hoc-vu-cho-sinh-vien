@@ -1,8 +1,8 @@
 # Kết nối AMS với cổng QLĐT Phenikaa
 
-> Các phần Phase 3–5A được giữ theo thời điểm kiểm tra. Kết quả mới nhất ở [Phase 5B](#phase-5b-chương-trình-đào-tạo-danh-mục-môn-và-nhóm-môn): đã đọc và nhập chương trình, môn và nhóm đủ bằng chứng; chưa lưu tiên quyết, điểm hoặc lịch. `IDLICHHOC` vẫn không phải khóa duy nhất cho từng buổi. Chưa có giao diện kết nối tài khoản Phenikaa trong AMS.
+> Các phần Phase 3–5C được giữ theo thời điểm kiểm tra. [Kết luận Phase 5D](#phase-5d-kết-luận-nghiên-cứu-ngữ-nghĩa-kết-quả-học-tập) xác định rõ phần điểm có thể đọc và phần chưa đủ cơ sở để lưu. Chương trình, môn và nhóm đã được nhập trong phạm vi Phase 5B; lần học, kết quả, lịch và thi chưa được nhập. `IDLICHHOC` không phải khóa duy nhất cho từng buổi. Chưa có giao diện kết nối tài khoản Phenikaa trong AMS.
 
-Tài liệu này ghi lại những gì đã kiểm tra trên cổng QLĐT Phenikaa trong ngày 18–20/09/2026 và những việc cần làm rõ trước khi viết phần kết nối cho AMS. Người tiếp tục phát triển có thể đọc phần đầu để hiểu hướng xử lý, rồi tra đường dẫn API và tên trường ở các phụ lục.
+Tài liệu này ghi lại các lượt kiểm tra cổng QLĐT Phenikaa từ 18 đến 30/09/2026 và những việc cần làm rõ trước khi mở thêm khả năng kết nối cho AMS. Người tiếp tục phát triển có thể đọc phần đầu để hiểu hướng xử lý, rồi tra đường dẫn API và tên trường ở các phần sau.
 
 Phạm vi của phần Phase 3 bên dưới là khảo sát. Khi đó adapter chưa gọi HTTP hoặc nhập dữ liệu; không dùng nhận định lịch sử này để thay cho kết quả Phase 4A/4B ở cuối tài liệu.
 
@@ -1273,3 +1273,84 @@ Không đọc lại lịch/thi thật trong lượt 5C này; hai bridge giữ gi
 Để mở gate còn cần nguồn giải thích identity lần học qua các trạng thái, quan hệ khi chưa có tổng kết, cách chọn tổng kết hiện hành và fact/rule tín chỉ đạt/GPA. Không cần người dùng gửi thêm credential; không cần đổi constraint bằng một quyết định tùy ý để vượt những chỗ thiếu bằng chứng.
 
 Giữ nguyên `PREREQUISITE_SOURCE = PARTIAL`, `PREREQUISITE_PERSISTENCE = BLOCKED_PARTIAL`; không nghiên cứu tiếp tiên quyết, không ép phân loại ba môn chưa rõ nhóm, không tự chọn curriculum hiện hành. Chưa bắt đầu 4D, Phase 6, GPA engine, worker, change detection, Google Calendar hoặc email.
+
+## Phase 5D: kết luận nghiên cứu ngữ nghĩa kết quả học tập
+
+### Kết luận để người phát triển dùng ngay
+
+**PHASE_5D_OVERALL = PASS cho đợt nghiên cứu; RESEARCH_CONCLUSION = SOURCE_LIMIT_REACHED.** PASS ở đây nghĩa là đã đi hết những đường tra cứu hợp lệ đang có và ghi lại ranh giới hỗ trợ, **không** có nghĩa đã đủ điều kiện nhập điểm. `STUDENT_COURSE_PERSISTENCE_READY = NO` và `ACADEMIC_RESULT_PERSISTENCE_READY = NO`. Không có importer điểm, migration hay endpoint mới trong Phase 5D.
+
+Điểm khác với 5C là đã đối chiếu thêm màn hình khối kiến thức, tra cứu đăng ký ở kỳ mới và hai quy chế đào tạo do chính cổng đăng tải. Quy chế giúp hiểu *cách xử lý học vụ*, nhưng không cung cấp khóa để nối từng hàng trên màn hình với một lần học xuyên suốt vòng đời. Không lấy một quy tắc tổng quát của quy chế để lấp trường còn thiếu trong phản hồi của cổng.
+
+### Đã kiểm tra những gì?
+
+Lượt đọc ngày 29–30/09/2026 dùng phiên do chủ tài khoản tự đăng nhập, chỉ mở màn hình tra cứu và tài liệu nhà trường; không xác nhận/hủy đăng ký, không gọi API ghi. Phần điểm hiện có 40 hàng tổng kết trong chín nhóm năm học–học kỳ, một thẻ “Điểm mới”, bốn hàng “Học phần nợ”, 14 hàng tổng hợp khối và 85 hàng môn trong khối. Tra cứu đăng ký ở kỳ `2026_2027_1` hiện có ba thẻ lớp của hai môn. Đây là **số lượng quan sát**, không phải dữ liệu mẫu để đưa vào repository. Hai lượt điều hướng độc lập cho cùng danh sách điểm, khối và đăng ký cho kết quả như nhau. 5C từng thấy 39 hàng tổng kết; không có bản lưu ID cũ để kết luận hàng thứ 40 là thêm mới, sửa hay thay thế.
+
+Đã xem lại luồng frontend đang chạy: bảng tổng kết nhóm theo `NAMHOC` và `HOCKY`, nút **Chi tiết** dùng handler trong `#zone_bangdiem` để đọc thành phần theo ID tổng kết. Đoạn popover cũ không phải handler hiện hành, nên không dùng nó làm quy tắc nghiệp vụ. `rsDiemMoiNhat` được nhận trong phản hồi `KetQuaHocTapCaNhan` và dùng cho thẻ “Điểm mới”; thẻ hiện có một mục khớp với một hàng tổng kết. Không thấy frontend dùng tập đó để chọn bản ghi hiệu lực cho `AcademicResult`, cũng không chứng minh “mới nhất” có nghĩa theo môn, lần học hay lần thi. Bảng điểm chính hiển thị các hàng nguồn, không chọn cực đại điểm/lần thi/thời gian trước khi vẽ.
+
+Quy chế chính thức đọc từ mục **Văn bản, quy định, biểu mẫu** trên cổng:
+
+- [Quy chế 1062/QĐ-ĐHP-ĐT ngày 20/07/2023](https://qldtbeta.phenikaa-uni.edu.vn/upload/ApisTinTuc/Doc/DBD89AC08B04400D90C60A5BD126FAA9_202309210856337290_20230720qd1062quy-ch.pdf), hiện được cổng ghi “hết hiệu lực”. Điều 35 (trang PDF 33) cho biết áp dụng từ năm học 2023–2024. Điều 12 (trang PDF 13–14) phân biệt điểm thường, P/NP và các trạng thái I, X, R, H, T; Điều 19–20 (trang PDF 21–22) nêu học lại/cải thiện và điểm trung bình có trọng số tín chỉ.
+- [Quy chế 1528/QĐ-ĐPH-ĐT ngày 20/04/2026](https://qldtbeta.phenikaa-uni.edu.vn/upload/ApisTinTuc/Doc/D2378F7F8BE744D5ACC6DA9D31DA7902_202609140824428840_20260420qd-1528-quy-.pdf), cổng ghi “đang áp dụng”. Điều 34 khoản 2 (trang PDF 39) cho biết áp dụng từ học kỳ 1 năm học 2026–2027 cho các khóa và thay quy chế 1062. Vì vậy không lấy quy tắc 2026 áp ngược vào các hàng điểm 2023–2026 đang thấy.
+
+Quy chế là bằng chứng về chính sách ở thời điểm nêu trên; chưa phải mô tả API hay cam kết mỗi hàng nguồn đã phản ánh đầy đủ một quyết định học vụ. Nếu cần tính lại một kỳ cũ, phải xét đúng quy chế có hiệu lực khi đó và các quyết định riêng có liên quan, không hard-code ngưỡng/thang điểm từ một văn bản cho mọi thời kỳ.
+
+### Lần học và đăng ký: nối được kết quả, chưa có khóa cha bền vững
+
+Giữ nguyên đối chiếu 5C: tám nhóm cùng môn/cùng `LANHOC` có hai đăng ký/lớp, nhưng điểm thành phần của **một** tổng kết nối tới cả hai. Bảy cặp có loại lớp khác nhau, một cặp cùng loại. `MANHOMLOP` xuất hiện như lớp CSS trong màn hình đã kiểm tra; `LOPHOCPHANCHINH` có cờ nhưng không có quy tắc nguồn chứng minh đó là khóa lần học. Không thể coi một đăng ký, một lớp chính, một mã nhóm hay ID tổng kết là `StudentCourse`.
+
+Ở kỳ tra cứu mới, ba thẻ đăng ký thuộc hai môn và một môn có hai lớp; hai lớp này cũng không có nhãn “lần học cha” hiển thị. Không môn nào trong kỳ đó có hàng tổng kết tương ứng trong bảng điểm hiện đọc. Điều này cho một mẫu đăng ký **chưa có tổng kết ở màn hình hiện tại**, không chứng minh trạng thái “đang học” vĩnh viễn, bởi màn hình có thể thiếu kỳ/dữ liệu. Hai nhóm cũ chỉ có điểm thành phần cũng không dùng được endpoint chi tiết tổng kết để tìm khóa cha.
+
+Quy chế 2026 Điều 8 (trang PDF 9–11) mô tả đăng ký, điều chỉnh/hủy và thông tin nhà trường lưu, nhưng việc *quy chế nói cần lưu* không chứng minh các ID hoặc trạng thái đó có trong request UI hiện tại. Điều 8 còn nói một lớp cho một học phần lúc đăng ký, trong khi tám nhóm lịch sử có hai đăng ký góp vào tổng kết; các thời điểm, loại lớp và biến động có thể khác nhau. Không ép dữ liệu hiện có theo một cách diễn giải điều khoản. `LEARNING_ATTEMPT_IDENTITY` và `REGISTRATION_GROUPING` vẫn `BLOCKED_PARTIAL`.
+
+### Kết quả hiệu lực, tín chỉ và GPA
+
+40 ID tổng kết hiện thấy không trùng nhau và giữ nguyên giữa hai lượt đọc. Không có cặp cùng môn–học kỳ–`LANHOC` với hai tổng kết trong **mẫu hiển thị**; đây là `NO_SAMPLE` cho tình huống chọn giữa nhiều hàng, không phải bằng chứng hệ thống không bao giờ tạo nhiều hàng. Hai lượt đọc không kiểm chứng được ID có giữ nguyên sau khi sửa điểm, phúc khảo hoặc nhập lại hay không. Quy chế 2023 Điều 18 và quy chế 2026 Điều 15–16 có việc điều chỉnh/phúc khảo; chúng không công bố cơ chế version/replacement của hàng API. Không tự chọn điểm cao nhất, `LANTHI` lớn nhất, ID lớn nhất hoặc phần tử cuối mảng.
+
+Quy chế 2023 Điều 19 (trang PDF 21) nêu cải thiện môn đã đạt chọn điểm cao nhất. Quy chế 2026 Điều 10 khoản 7 (trang PDF 18) phân biệt học lại môn chưa đạt dùng kết quả lần học cuối với cải thiện môn đã đạt dùng điểm cao nhất để tính trung bình. Đây là **quy tắc giữa các lần học trong bối cảnh chính sách**, không chứng minh một trong nhiều hàng tổng kết *của cùng lần học* là bản ghi hiện hành. Mẫu hiện tại cũng không có trường active/approved/revision/replaced-by đã xác minh. `CURRENT_RESULT_SELECTION = BLOCKED_PARTIAL`.
+
+Tín chỉ của `Course` là khối lượng môn; tín chỉ trong thẻ đăng ký và hàng điểm là tín chỉ môn. Với hai đăng ký cùng góp một tổng kết, cộng tín chỉ mỗi thẻ sẽ tính đôi, còn lấy một thẻ làm `StudentCourse.creditsAttempted` là một quyết định chưa có căn cứ. Không thấy tín chỉ đăng ký học riêng cho **một lần học đã định danh**. `CREDITS_ATTEMPTED = BLOCKED_PARTIAL`.
+
+Trang khối kiến thức có trạng thái hoàn thành từng môn và tổng tín chỉ tích lũy theo khối, nhưng hàng môn không có ID kết quả, `LANHOC` hay `LANTHI` để nối ngược tới lần học. Quy chế 2026 Điều 11 (trang PDF 19–20) còn xét môn trong chương trình, miễn/công nhận, nhóm tự chọn vượt yêu cầu và một số lựa chọn khi cùng điểm. Một môn đã đạt không tự động cho biết `creditsEarned` của *bản ghi lần học cụ thể*; càng không thể chia tổng tích lũy về từng dòng. `CREDITS_EARNED = BLOCKED_PARTIAL`.
+
+Quy chế 2023 Điều 12 (trang PDF 14) và quy chế 2026 Điều 10 khoản 6 (trang PDF 17–18) loại P/NP và một số trạng thái đặc biệt khỏi điểm trung bình. Quy chế 2026 Điều 11 (trang PDF 19–20) còn giới hạn theo chương trình và cách chọn môn tự chọn; điểm trung bình là tổng có trọng số tín chỉ, không đơn giản là “có điểm hệ 4 thì tính”. UI cho điểm quy đổi/chữ và trung bình do server trả, nhưng không có cờ *hàng kết quả này được tính GPA* đã nối chắc với từng lần học. `GPA_INCLUSION = BLOCKED_PARTIAL`. Không dùng `false` để biểu diễn “chưa biết”.
+
+### Đối chiếu model hiện tại trước khi định viết importer
+
+| Model/field | Hiện có | Vướng mắc với nguồn | Quyết định 5D |
+| --- | --- | --- | --- |
+| `Semester.Identifier` | Năm bắt đầu + `Tn` | Nhiều kỳ điểm nguồn có thể vào một học kỳ | `SEMESTER_MAPPING = PASS` cho *điểm*; chưa ghép kỳ đăng ký/thi |
+| `StudentCourse.courseId`, `semesterId` | Bắt buộc | Môn/học kỳ điểm đã có cách chuẩn hóa | Chưa đủ để định danh một lần học |
+| `StudentCourse.sectionId` | Một lớp, có thể null | Một tổng kết có thể dùng nhiều lớp | Không chọn đại một lớp; null cũng không giải quyết khóa lần học |
+| `StudentCourse.attemptNumber` | Bắt buộc, số dương | `LANHOC` là số nguồn báo; chưa chứng minh identity xuyên điều chỉnh | Không tự đánh lại số để vừa unique constraint |
+| `StudentCourse.creditsAttempted` | Bắt buộc | Chỉ thấy tín chỉ môn/đăng ký | Không lấy tổng của nhiều lớp hoặc mặc định từ `Course` |
+| `AcademicResult.studentCourseId` | Bắt buộc | Chưa có StudentCourse đủ tin cậy | Không tạo kết quả mồ côi hay lần học giả |
+| `AcademicResult.status` | Bắt buộc | PASSED/FAILED/RETAKE_REQUIRED ở observation chưa khớp hoàn toàn enum | Không ép `RETAKE_REQUIRED` thành `FAILED` |
+| `AcademicResult.numericScore`, `letterGrade`, `gradePoints` | Có thể null | UI có giá trị nhưng cần biết bản ghi nào hiệu lực | Giữ giá trị ở observation, không tính lại |
+| `AcademicResult.creditsAttempted` | Sao từ lần học | Lần học chưa xác định tín chỉ | Chưa thể ghi đúng |
+| `AcademicResult.creditsEarned` | Bắt buộc | Tích lũy/hoàn thành môn không phải tín chỉ từng lần học | Không tự điền bằng 0 hay tín chỉ môn |
+| `AcademicResult.includedInGpa` | Boolean bắt buộc | Nguồn chưa cho fact từng kết quả; `false` khác `UNKNOWN` | Chưa lưu; cân nhắc biểu diễn ba trạng thái khi có use case |
+| `AcademicResult.gradingPolicyId`, `recordedAt` | Policy tùy chọn, thời điểm bắt buộc | Quy chế có thời hạn áp dụng; thời điểm đọc không phải thời điểm ghi nhận học vụ | Không tạo policy/timestamp giả |
+
+`SEMESTER_MAPPING = PASS` là kết luận hẹp: 13 ID kỳ điểm đã đối chiếu ở 5C ánh xạ vào chín cặp `NAMHOC`–`HOCKY`, và UI nhóm theo chính cặp này. `SEMESTER_PERSISTENCE = NOT_IMPLEMENTED`: 5D không có luồng ghi riêng cho Semester, nên không thêm bảng ánh xạ chỉ để tăng tỷ lệ hoàn thành. Nếu sau này lưu độc lập, phải định kiểu kỳ điểm khác kỳ đăng ký/thi, cho phép nhiều kỳ nguồn về một Semester và không bịa ngày bắt đầu/kết thúc.
+
+### Ranh giới hỗ trợ và việc nên làm tiếp
+
+| Gate | Kết luận 5D | Lý do ngắn |
+| --- | --- | --- |
+| `LEARNING_ATTEMPT_IDENTITY` | `BLOCKED_PARTIAL` | Có cạnh tổng kết–thành phần–đăng ký, thiếu ID lần học xuyên vòng đời |
+| `REGISTRATION_GROUPING` | `BLOCKED_PARTIAL` | Hai đăng ký cùng góp điểm, nhưng không có quy tắc gom khi chưa có tổng kết/chuyển lớp |
+| `CURRENT_RESULT_SELECTION` | `BLOCKED_PARTIAL` | Không có mẫu nhiều tổng kết cùng lần học hoặc cờ phiên bản/hiệu lực |
+| `CREDITS_ATTEMPTED` | `BLOCKED_PARTIAL` | Tín chỉ môn/đăng ký chưa là tín chỉ của một lần học |
+| `CREDITS_EARNED` | `BLOCKED_PARTIAL` | Không có liên kết từ hoàn thành môn/tổng tích lũy về kết quả cụ thể |
+| `GPA_INCLUSION` | `BLOCKED_PARTIAL` | Có quy tắc chính sách, thiếu lựa chọn/cờ ở mức bản ghi và đúng thời kỳ |
+| `STUDENT_COURSE_PERSISTENCE_READY` | `NO` | Identity và tín chỉ lần học chưa đạt |
+| `ACADEMIC_RESULT_PERSISTENCE_READY` | `NO` | Thiếu lần học, kết quả hiện hành, tín chỉ đạt và GPA inclusion |
+| `EXAM_TO_STUDENTCOURSE` | `UNRESOLVED` | Lịch thi chưa nối được đúng lần học; 5D không có bằng chứng mới |
+| `SCHEDULE_TO_STUDENTCOURSE` | `PARTIALLY_RESOLVED` | Lịch tới lớp/đăng ký, chưa tới lần học; `IDLICHHOC` vẫn lặp |
+
+**Có thể hỗ trợ an toàn:** đọc observation thuộc đúng tài khoản, kiểm tra quan hệ tổng kết–thành phần–đăng ký, giữ các nguồn kỳ/điểm riêng, nhập curriculum/catalog trong phạm vi đã xác minh và trình bày giới hạn cho người phát triển. **Chưa hỗ trợ an toàn:** tự lưu StudentCourse/AcademicResult, chọn kết quả hiệu lực, tính GPA/tín chỉ đạt từ hàng điểm, sinh Exam/ClassSession từ suy đoán, hay đồng bộ xóa dữ liệu khi một phản hồi thiếu hàng. Không có bằng chứng mới để nâng các gate tiên quyết, lựa chọn curriculum hiện hành hoặc tính đầy đủ snapshot.
+
+Đợt nghiên cứu mục tiêu đã hết đường kiểm tra hợp lý trên UI hiện có: đã xem bảng điểm, chi tiết đang chạy, điểm mới, học phần nợ, khối kiến thức, đăng ký kỳ có/chưa có điểm và quy chế liên quan. Để mở lại các gate cần tài liệu/API chính thức giải thích khóa lần học, vòng đời kết quả và quyết định tín chỉ/GPA ở mức bản ghi, hoặc một nguồn hợp lệ khác có các fact đó. Trong lúc chờ, hướng kiến trúc **đề xuất, chưa triển khai** là tạm hoãn persistence kết quả; nếu cần hiển thị, chỉ trình bày observation có ghi rõ nguồn/độ đầy đủ, hoặc yêu cầu đối soát thủ công trước khi ghi. Có thể phát triển các tính năng độc lập với `StudentCourse`, nhưng không tự bắt đầu phase đó ở đây.
+
+Phase 5D chỉ sửa tài liệu. Không tạo endpoint, migration, test hay fixture chứa dữ liệu cá nhân. CI tự động của AMS dùng dữ liệu tổng hợp và không đăng nhập/gọi cổng Phenikaa.

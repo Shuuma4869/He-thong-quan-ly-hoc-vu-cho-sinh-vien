@@ -98,3 +98,9 @@ Không tự chọn chương trình cho hồ sơ vì selector chưa xác nhận �
 Năm học và số học kỳ được chuẩn hóa thành `Semester.Identifier`, dùng `T1`, `T2`… làm mã nội bộ. Một học kỳ có thể chứa nhiều kỳ điểm nguồn. Chưa có bảng ánh xạ mới vì chưa có luồng ghi lần học đủ bằng chứng.
 
 Capability mới vẫn đi qua adapter kết nối hiện có, gồm ownership, phiên mã hóa, cập nhật lần truy cập và xử lý session hết hạn. Transaction của adapter còn bao quanh HTTP; phase này chưa sửa giới hạn đó. Khi triển khai importer học vụ, phải tách đọc/kiểm tra nguồn khỏi transaction ghi ngắn và kiểm tra lại quyền trước khi ghi. Không coi bộ đọc hiện tại là importer đã có idempotency/concurrency. Xem [kết quả 5C](phenikaa-integration.md#phase-5c-đối-chiếu-lần-học-và-chi-tiết-kết-quả).
+
+## Ranh giới sau nghiên cứu Phase 5D
+
+Đã đối chiếu thêm các màn hình điểm, khối kiến thức, đăng ký và quy chế đào tạo 2023/2026. `Semester.Identifier` dùng năm học và `Tn` đủ cơ sở cho **học kỳ của bảng điểm**; nhiều kỳ điểm nguồn có thể cùng thuộc một học kỳ. Chưa persist Semester hay ánh xạ kỳ vì không có luồng ghi độc lập cần dùng nó. Kỳ đăng ký và kỳ thi vẫn phải được giải thích riêng.
+
+Quy chế mô tả cách xử lý học lại, cải thiện điểm, tín chỉ và GPA theo từng thời kỳ, nhưng các hàng nguồn hiện không cung cấp khóa lần học xuyên vòng đời, lựa chọn bản ghi kết quả hiện hành và tín chỉ đạt/GPA inclusion của từng bản ghi. Do đó không tạo `StudentCourse` hay `AcademicResult` từ observation, không đổi model hoặc constraint để ép dữ liệu vào. Đặc biệt, `includedInGpa=false` không thể thay cho “chưa biết”. Lịch thi vẫn chưa nối được tới một lần học; lịch học mới nối tới lớp/đăng ký. [Bảng quyết định và bằng chứng Phase 5D](phenikaa-integration.md#phase-5d-kết-luận-nghiên-cứu-ngữ-nghĩa-kết-quả-học-tập) là mốc để xét lại gate này sau khi có nguồn mới.
