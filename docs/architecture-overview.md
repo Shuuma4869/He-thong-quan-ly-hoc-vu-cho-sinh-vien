@@ -90,3 +90,11 @@ Nguồn chưa chứng minh đã trả đủ mọi phiên bản/chương trình, 
 Phiên bản 4 của payload mã hóa thêm mã chức năng curriculum, vẫn đọc được phiên bản 1–3. AAD và khóa không đổi; thiếu capability mới không làm phiên cũ bị coi là hết hạn. Không thay đổi đăng nhập AMS, cookie, CSRF hoặc allowlist HTTP.
 
 Không tự chọn chương trình cho hồ sơ vì selector chưa xác nhận đâu là chương trình hiện hành. Không lưu tiên quyết vì mẫu thật có điều kiện điểm tối thiểu, trong khi model hiện chỉ biểu diễn quan hệ từng cặp môn. Không lưu điểm, StudentCourse, Semester, lịch hoặc tạo scheduler. Xem [bằng chứng và giới hạn 5B](phenikaa-integration.md#phase-5b-chương-trình-đào-tạo-danh-mục-môn-và-nhóm-môn).
+
+## Đọc quan hệ điểm trong Phase 5C
+
+`fetchAcademicResultDetail` đọc liên kết giữa một tổng kết và các điểm thành phần. Trước khi gọi endpoint chi tiết, client đọc lại chương trình/điểm/đăng ký của tài khoản để xác nhận ID tổng kết thuộc observation đó. Mapper nối bằng ID thành phần, đối chiếu ngữ cảnh và trả `AcademicResultDetail`; không tự gom thành StudentCourse hoặc ghi AcademicResult.
+
+Năm học và số học kỳ được chuẩn hóa thành `Semester.Identifier`, dùng `T1`, `T2`… làm mã nội bộ. Một học kỳ có thể chứa nhiều kỳ điểm nguồn. Chưa có bảng ánh xạ mới vì chưa có luồng ghi lần học đủ bằng chứng.
+
+Capability mới vẫn đi qua adapter kết nối hiện có, gồm ownership, phiên mã hóa, cập nhật lần truy cập và xử lý session hết hạn. Transaction của adapter còn bao quanh HTTP; phase này chưa sửa giới hạn đó. Khi triển khai importer học vụ, phải tách đọc/kiểm tra nguồn khỏi transaction ghi ngắn và kiểm tra lại quyền trước khi ghi. Không coi bộ đọc hiện tại là importer đã có idempotency/concurrency. Xem [kết quả 5C](phenikaa-integration.md#phase-5c-đối-chiếu-lần-học-và-chi-tiết-kết-quả).
