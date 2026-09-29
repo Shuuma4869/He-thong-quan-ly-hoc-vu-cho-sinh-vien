@@ -1354,3 +1354,53 @@ Quy chế 2023 Điều 12 (trang PDF 14) và quy chế 2026 Điều 10 khoản 6
 Đợt nghiên cứu mục tiêu đã hết đường kiểm tra hợp lý trên UI hiện có: đã xem bảng điểm, chi tiết đang chạy, điểm mới, học phần nợ, khối kiến thức, đăng ký kỳ có/chưa có điểm và quy chế liên quan. Để mở lại các gate cần tài liệu/API chính thức giải thích khóa lần học, vòng đời kết quả và quyết định tín chỉ/GPA ở mức bản ghi, hoặc một nguồn hợp lệ khác có các fact đó. Trong lúc chờ, hướng kiến trúc **đề xuất, chưa triển khai** là tạm hoãn persistence kết quả; nếu cần hiển thị, chỉ trình bày observation có ghi rõ nguồn/độ đầy đủ, hoặc yêu cầu đối soát thủ công trước khi ghi. Có thể phát triển các tính năng độc lập với `StudentCourse`, nhưng không tự bắt đầu phase đó ở đây.
 
 Phase 5D chỉ sửa tài liệu. Không tạo endpoint, migration, test hay fixture chứa dữ liệu cá nhân. CI tự động của AMS dùng dữ liệu tổng hợp và không đăng nhập/gọi cổng Phenikaa.
+
+## Phase 5E: API đọc trực tiếp và ranh giới nguồn
+
+### Đọc được gì, chưa lưu gì?
+
+Phase 5E đưa phần đọc kết quả đã kiểm chứng ra một API có xác thực. Luồng là **tài khoản AMS → kết nối của chính tài khoản → bộ đọc Phenikaa → dữ liệu quan sát đã chuẩn hóa → DTO trả về**. DTO là dữ liệu để xem, không phải một `StudentCourse` hoặc `AcademicResult` vừa được tạo. API chỉ hoạt động khi `AMS_PHENIKAA_ENABLED=true` và đã có kết nối được cấp qua quy trình nội bộ; hiện chưa có màn hình để người dùng tự liên kết tài khoản Phenikaa.
+
+| Đường dẫn GET | Ý nghĩa |
+| --- | --- |
+| `/api/me/academic/source/status` | Trạng thái kết nối và bảng khả năng hỗ trợ, không gọi cổng nguồn |
+| `/api/me/academic/source/programs` | Những chương trình tài khoản nguồn được phép tra cứu; trả `programRef` thay ID nguồn |
+| `/api/me/academic/source/records?programRef=...` | Điểm thành phần và kết quả cuối đang quan sát, theo từng đăng ký nguồn; trả `detailRef` khi có tổng kết |
+| `/api/me/academic/source/records/{detailRef}/detail?programRef=...` | Những điểm thành phần mà nguồn nối với tổng kết đã chọn |
+
+Chưa mở REST cho lịch học/lịch thi trong 5E. Adapter vẫn có khả năng đọc chúng, nhưng thêm hai hợp đồng API nữa chưa cần để chốt bề mặt điểm học tập. Curriculum đã có phần được lưu trong AMS; không gọi lại nguồn mỗi lần chỉ để tạo một API curriculum trùng công dụng. API trạng thái nói rõ các phần này là `ADAPTER_READ_ONLY_NO_API` hoặc `PERSISTED_PARTIAL`, không ngụ ý frontend đã có màn hình tương ứng.
+
+Mỗi hàng `records` vẫn là **một đăng ký quan sát được**, không phải một lần học đã đối soát. Có thể có hai hàng cùng môn, học kỳ và `reportedLearningAttempt`; nếu cùng góp vào một tổng kết, chúng có thể cùng `detailRef`. `course.credits` là tín chỉ môn, không phải `creditsAttempted` của lần học. Học kỳ được hiển thị theo `Semester.Identifier` chỉ cho dữ liệu điểm; không áp mã này sang kỳ lọc lịch/thi. `RETAKE_REQUIRED` giữ nguyên, không đổi thành `FAILED`.
+
+Response có `completeness: UNKNOWN`. Khối `unknownSemantics` ghi riêng `creditsEarned`, `includedInGpa`, `currentResult` đều là `UNKNOWN`; không có `studentCourseId`, không điền 0/false, không gắn cờ “kết quả hiện hành”. Danh sách rỗng cũng giữ `UNKNOWN`, vì chưa chứng minh phản hồi nguồn luôn đầy đủ. Không lưu raw observation, điểm hay lịch vào Redis/PostgreSQL qua API đọc này; database chỉ có thể cập nhật metadata lần truy cập/trạng thái của kết nối như trước.
+
+### Reference và bảo vệ dữ liệu
+
+`programRef`, `registrationRef`, `detailRef` là chuỗi băm phân tách theo loại, user AMS và ID nguồn. Chúng che ID nguồn khỏi hợp đồng JSON, nhưng **không phải** khóa nghiệp vụ bền vững, token đăng nhập hay cơ chế phân quyền tự thân. Khi client dùng một reference, service đọc lại danh sách chương trình/kết quả của chính user, tìm hàng khớp rồi adapter xác minh ID tổng kết còn thuộc observation mới trước khi gọi chi tiết. Reference tự chế, sai loại, thuộc user khác hoặc đã biến mất đều bị từ chối; không có endpoint nhận arbitrary ID Phenikaa để gọi cổng.
+
+Chi tiết được lấy trong một lượt nguồn mới. DTO chỉ trả mã đăng ký băm và tên/mã/điểm thành phần đã chuẩn hóa. Nếu ID hoặc giá trị thành phần khác giữa hai lượt đọc, API trả lỗi dữ liệu chưa nhất quán, không trộn hai phiên bản. Các trường JSON riêng của Phenikaa, ID người học, credential, cookie và phản hồi mã hóa không xuất hiện trong DTO. Không ghi danh sách môn, điểm hoặc reference vào log.
+
+API dùng session và CSRF/CORS hiện có; tất cả endpoint mới là GET và cần tài khoản AMS đã đăng nhập. Mỗi user có khoảng nghỉ mặc định năm giây cho từng loại request chương trình, danh sách điểm và chi tiết. Redis chỉ giữ khóa cooldown gồm UUID nội bộ và loại request, không giữ nội dung học tập. Giá trị có thể cấu hình qua `AMS_PHENIKAA_READ_COOLDOWN` trong khoảng 1–60 giây. Đây là giới hạn tải cơ bản, chưa phải chính sách quota nhiều tầng.
+
+Đường đọc điểm không giữ transaction ghi hoặc khóa user trong lúc gọi HTTP: transaction ngắn đầu kiểm tra account/kết nối và giải mã phiên, transaction ngắn sau cập nhật metadata. Nếu kết nối đã đổi/ngắt trong thời gian gọi nguồn, kết quả cũ không được trả. Điều này khác đường nhập hồ sơ/chương trình đang giữ transaction lâu; 5E chưa refactor hai importer đó.
+
+| Tình huống | HTTP | Mã an toàn trả client |
+| --- | --- | --- |
+| Chưa có/ngắt kết nối | 409 | `CONNECTION_NOT_FOUND` |
+| Phiên nguồn hết hạn | 409 | `RECONNECTION_REQUIRED` |
+| Reference không thuộc tập hiện đọc | 404 | `INVALID_SOURCE_REFERENCE` |
+| Nguồn chậm quá hạn | 504 | `SOURCE_TIMEOUT` |
+| Phản hồi đổi schema/không giải mã được | 502 | `SOURCE_SCHEMA_CHANGED` |
+| Dữ liệu hai lượt không khớp/quá giới hạn | 502 | `SOURCE_DATA_INCOMPLETE` |
+| Nguồn hoặc kết nối hiện thời không sẵn sàng | 502 | `SOURCE_UNAVAILABLE` |
+| Gọi lại quá sớm | 429 | `RATE_LIMITED` |
+
+Lỗi không trả đường dẫn API nội bộ, tên procedure hoặc exception nguồn. Session hết hạn vẫn chuyển kết nối thành `RECONNECTION_REQUIRED`; API không trả 200 với danh sách rỗng để che lỗi. Các giới hạn byte, số hàng và timeout của adapter vẫn áp dụng. Service còn từ chối nếu tổng số hàng để trả vượt 10.000; không cắt bớt rồi báo đã đọc đủ.
+
+### Mốc đóng Phase 5
+
+Phần **đã lưu** vẫn là hồ sơ người học, chương trình/danh mục môn/nhóm trong giới hạn 5B. Phần **đọc trực tiếp** gồm kết quả và chi tiết qua API 5E; lịch học/thi mới có ở adapter, chưa có REST. Phần **bị giới hạn nguồn** vẫn gồm `StudentCourse`, `AcademicResult`, lưu buổi học/lịch thi và điều kiện tiên quyết đầy đủ. Không có V8, cache điểm hay bảng staging. Phase 5 có thể được xem là `CLOSED_WITH_SOURCE_LIMITS` cho những khả năng đã giao; điều đó không biến các phần bị chặn thành hoàn thành.
+
+Test tự động dùng user, điểm và phiên giả định. Test service/API kiểm tra ownership, reference, `UNKNOWN`, lỗi an toàn và dữ liệu rỗng. Integration test dùng PostgreSQL/Redis thật để kiểm tra đường HTTP có xác thực, cooldown, hết phiên và không tạo hàng học vụ. CI không gọi Phenikaa. Việc đọc live qua endpoint mới cần một kết nối AMS đã được cấp hợp lệ cho chính tài khoản; nếu chưa có, không báo test tổng hợp là live verify.
+
+Hướng Phase 6A **chỉ đề xuất**: trạng thái/lượt đồng bộ, worker và khóa cho các dữ liệu đã có thể nhập như hồ sơ/chương trình. Không thiết kế phát hiện thay đổi điểm, buổi học hay kỳ thi dựa trên identity còn chưa xác minh. Không bắt đầu Phase 6 hoặc một Phase 5F tiếp tục đoán khóa lần học.

@@ -95,7 +95,8 @@ final class PhenikaaAcademicRecords {
                     || !component.code().equals(text(row, "DIEM_THANHPHANDIEM_MA", 80))
                     || !component.name().equals(text(row, "DIEM_THANHPHANDIEM_TEN", 200))
                     || component.score().compareTo(decimal(row, "DIEM", 6, false)) != 0) throw invalid();
-            links.add(new AcademicResultDetail.ComponentLink(entry.sourceEnrollmentId(), id));
+            links.add(new AcademicResultDetail.ComponentLink(entry.sourceEnrollmentId(), id,
+                    component.code(), component.name(), component.examAttempt(), component.score()));
         }
         return new AcademicResultDetail(parent.result().sourceId(), links);
     }

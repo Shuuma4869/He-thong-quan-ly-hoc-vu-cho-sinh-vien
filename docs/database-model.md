@@ -2,7 +2,7 @@
 
 ## Phạm vi hiện tại
 
-Phase 2 đã tạo model học vụ chuẩn hóa. Phase 4B thêm kết nối Phenikaa mã hóa và use case nhập hồ sơ. Phase 5B thêm nhập chương trình, danh mục môn và nhóm có bằng chứng nguồn. Điểm/lịch vẫn chỉ được đọc thành observation, chưa được lưu vì thiếu liên kết nguồn đáng tin cậy. Chưa có API CRUD học vụ, bộ tính GPA hoặc change detection engine.
+Phase 2 đã tạo model học vụ chuẩn hóa. Phase 4B thêm kết nối Phenikaa mã hóa và use case nhập hồ sơ. Phase 5B thêm nhập chương trình, danh mục môn và nhóm có bằng chứng nguồn. Phase 5E mở API đọc trực tiếp kết quả học tập; điểm/lịch vẫn chỉ là observation, chưa được lưu vì thiếu liên kết nguồn đáng tin cậy. API đọc không thêm migration hay thay đổi quan hệ trong sơ đồ dưới đây. Chưa có API CRUD học vụ, bộ tính GPA hoặc change detection engine.
 
 ## Ownership và persistence
 

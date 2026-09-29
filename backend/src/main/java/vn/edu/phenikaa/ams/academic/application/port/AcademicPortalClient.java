@@ -4,6 +4,7 @@ import java.util.UUID;
 import java.util.Objects;
 import java.time.LocalDate;
 import java.util.List;
+import java.time.Instant;
 
 public interface AcademicPortalClient {
 
@@ -15,6 +16,8 @@ public interface AcademicPortalClient {
                                                    CurriculumOption curriculum, String courseSourceId);
 
     StudentConnectionId currentConnection(UUID currentUserId);
+
+    ConnectionInfo connectionInfo(UUID currentUserId);
 
     ProfileObservation fetchProfile(UUID currentUserId, StudentConnectionId connectionId);
 
@@ -36,5 +39,9 @@ public interface AcademicPortalClient {
 
     record StudentConnectionId(UUID value) {
         public StudentConnectionId { Objects.requireNonNull(value); }
+    }
+
+    record ConnectionInfo(State state, Instant lastSuccessfulAccessAt) {
+        public enum State { NOT_CONNECTED, CONNECTED, RECONNECTION_REQUIRED, DISCONNECTED }
     }
 }

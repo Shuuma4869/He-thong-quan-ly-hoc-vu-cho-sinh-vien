@@ -179,7 +179,9 @@ class PhenikaaAcademicHttpTest {
     }
     @Test void readsResultDetailOnlyAfterRevalidatingProgramRecordsAndRegistrations() {
         var result = client.fetchAcademicResultDetail(session, program, "synthetic-final-1");
-        assertThat(result.components()).containsExactly(new AcademicResultDetail.ComponentLink("synthetic-registration-1", "synthetic-component-1"));
+        assertThat(result.components()).containsExactly(new AcademicResultDetail.ComponentLink(
+                "synthetic-registration-1", "synthetic-component-1", "TEST_COMPONENT", "Điểm thành phần giả định", 2,
+                new java.math.BigDecimal("6.25")));
         assertThat(paths).containsExactly(PhenikaaHttpTransport.ACADEMIC_PROGRAMS_PATH, PhenikaaHttpTransport.ACADEMIC_RECORDS_PATH,
                 PhenikaaHttpTransport.ACADEMIC_REGISTRATIONS_PATH, PhenikaaHttpTransport.ACADEMIC_RESULT_DETAIL_PATH);
     }

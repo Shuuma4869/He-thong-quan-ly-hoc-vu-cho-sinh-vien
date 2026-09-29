@@ -5,7 +5,10 @@ import java.time.LocalDate;
 import java.util.UUID;
 import java.util.List;
 import java.util.function.Function;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionTemplate;
 import vn.edu.phenikaa.ams.academic.application.port.*;
 import vn.edu.phenikaa.ams.user.domain.AppUser;
 import vn.edu.phenikaa.ams.user.infrastructure.UserRepository;
@@ -17,13 +20,16 @@ public class PhenikaaAcademicPortalClient implements AcademicPortalClient {
     private final UserRepository users;
     private final PhenikaaSessionCipher cipher;
     private final PhenikaaHttpClient http;
+    private final TransactionTemplate readTransactions;
 
     public PhenikaaAcademicPortalClient(PhenikaaConnectionRepository connections, UserRepository users,
-                                       PhenikaaSessionCipher cipher, PhenikaaHttpClient http) {
+                                       PhenikaaSessionCipher cipher, PhenikaaHttpClient http,
+                                       PlatformTransactionManager transactions) {
         this.connections = connections;
         this.users = users;
         this.cipher = cipher;
         this.http = http;
+        this.readTransactions = new TransactionTemplate(transactions);
     }
 
     /** Trusted local provisioning only; not exposed by a credential-submission endpoint. */
@@ -58,6 +64,17 @@ public class PhenikaaAcademicPortalClient implements AcademicPortalClient {
         var connection = connections.findByUserId(currentUserId)
                 .orElseThrow(() -> new AcademicPortalException(CONNECTION_UNAVAILABLE));
         return new StudentConnectionId(connection.id());
+    }
+
+    @Override public ConnectionInfo connectionInfo(UUID currentUserId) {
+        requireActiveUser(currentUserId);
+        return connections.findByUserId(currentUserId)
+                .map(connection -> new ConnectionInfo(switch (connection.status()) {
+                    case CONNECTED -> ConnectionInfo.State.CONNECTED;
+                    case RECONNECTION_REQUIRED -> ConnectionInfo.State.RECONNECTION_REQUIRED;
+                    case DISCONNECTED -> ConnectionInfo.State.DISCONNECTED;
+                }, connection.view().lastSuccessfulAccessAt()))
+                .orElseGet(() -> new ConnectionInfo(ConnectionInfo.State.NOT_CONNECTED, null));
     }
 
     @Override public ProfileObservation fetchProfile(UUID currentUserId, StudentConnectionId connectionId) {
@@ -100,17 +117,19 @@ public class PhenikaaAcademicPortalClient implements AcademicPortalClient {
         return material.exam();
     }
 
-    @Override public List<AcademicProgram> fetchAcademicPrograms(UUID userId, StudentConnectionId connectionId) {
-        return access(userId, connectionId, material -> http.fetchAcademicPrograms(academicSession(material)));
+    @Override @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public List<AcademicProgram> fetchAcademicPrograms(UUID userId, StudentConnectionId connectionId) {
+        return accessRead(userId, connectionId, material -> http.fetchAcademicPrograms(academicSession(material)));
     }
 
     @Override public List<AcademicPeriod> fetchAcademicPeriods(UUID userId, StudentConnectionId connectionId) {
         return access(userId, connectionId, material -> http.fetchAcademicPeriods(academicSession(material)));
     }
 
-    @Override public AcademicRecordObservation fetchAcademicRecords(UUID userId, StudentConnectionId connectionId,
-                                                                    AcademicProgram program) {
-        return access(userId, connectionId, material -> http.fetchAcademicRecords(academicSession(material), program));
+    @Override @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public AcademicRecordObservation fetchAcademicRecords(UUID userId, StudentConnectionId connectionId,
+                                                          AcademicProgram program) {
+        return accessRead(userId, connectionId, material -> http.fetchAcademicRecords(academicSession(material), program));
     }
 
     private static PhenikaaSession academicSession(PhenikaaSessionMaterial material) {
@@ -118,10 +137,53 @@ public class PhenikaaAcademicPortalClient implements AcademicPortalClient {
         return material.academic();
     }
 
-    @Override public AcademicResultDetail fetchAcademicResultDetail(UUID userId, StudentConnectionId connectionId,
-                                                                     AcademicProgram program, String sourceResultId) {
-        return access(userId, connectionId,
+    @Override @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public AcademicResultDetail fetchAcademicResultDetail(UUID userId, StudentConnectionId connectionId,
+                                                           AcademicProgram program, String sourceResultId) {
+        return accessRead(userId, connectionId,
                 material -> http.fetchAcademicResultDetail(academicSession(material), program, sourceResultId));
+    }
+
+    private record ReadSession(PhenikaaSessionMaterial material, Instant authenticatedAt) {}
+
+    private <T> T accessRead(UUID userId, StudentConnectionId id, Function<PhenikaaSessionMaterial, T> operation) {
+        var opened = readTransactions.execute(status -> {
+            requireActiveUser(userId);
+            var connection = connections.findByIdAndUserId(id.value(), userId)
+                    .orElseThrow(() -> new AcademicPortalException(CONNECTION_UNAVAILABLE));
+            if (connection.status() != PhenikaaConnection.Status.CONNECTED)
+                throw new AcademicPortalException(CONNECTION_UNAVAILABLE);
+            try { return new ReadSession(cipher.decrypt(connection.encryptedSession(), connection.keyVersion(), id.value(), userId),
+                    connection.authenticatedAt()); }
+            catch (IllegalStateException ex) { return new ReadSession(null, connection.authenticatedAt()); }
+        });
+        if (opened.material() == null) {
+            recordRead(userId, id, opened.authenticatedAt(), SESSION_INTEGRITY_FAILURE);
+            throw new AcademicPortalException(SESSION_INTEGRITY_FAILURE);
+        }
+        try (var material = opened.material()) {
+            T result = operation.apply(material);
+            if (!recordRead(userId, id, opened.authenticatedAt(), null))
+                throw new AcademicPortalException(CONNECTION_UNAVAILABLE);
+            return result;
+        } catch (PhenikaaClientException ex) {
+            var failure = translate(ex);
+            recordRead(userId, id, opened.authenticatedAt(), failure.code());
+            throw failure;
+        }
+    }
+
+    private boolean recordRead(UUID userId, StudentConnectionId id, Instant authenticatedAt,
+                               AcademicPortalException.Code failure) {
+        return Boolean.TRUE.equals(readTransactions.execute(status -> {
+            if (users.findById(userId).filter(user -> user.getAccountStatus() == AppUser.Status.ACTIVE).isEmpty()) return false;
+            var connection = connections.lockByIdAndUserId(id.value(), userId).orElse(null);
+            if (connection == null || connection.status() != PhenikaaConnection.Status.CONNECTED
+                    || !connection.authenticatedAt().equals(authenticatedAt)) return false;
+            if (failure == null) connection.successful(Instant.now());
+            else connection.failed(failure, Instant.now());
+            return true;
+        }));
     }
 
     private <T> T access(UUID userId, StudentConnectionId id, Function<PhenikaaSessionMaterial, T> operation) {
@@ -161,6 +223,11 @@ public class PhenikaaAcademicPortalClient implements AcademicPortalClient {
 
     private void lockActiveUser(UUID userId) {
         var user = users.lockById(userId).orElseThrow(() -> new AcademicPortalException(CONNECTION_UNAVAILABLE));
+        if (user.getAccountStatus() != AppUser.Status.ACTIVE) throw new AcademicPortalException(CONNECTION_UNAVAILABLE);
+    }
+
+    private void requireActiveUser(UUID userId) {
+        var user = users.findById(userId).orElseThrow(() -> new AcademicPortalException(CONNECTION_UNAVAILABLE));
         if (user.getAccountStatus() != AppUser.Status.ACTIVE) throw new AcademicPortalException(CONNECTION_UNAVAILABLE);
     }
 
