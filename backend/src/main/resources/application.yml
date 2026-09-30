@@ -65,6 +65,13 @@ springdoc:
     path: /swagger-ui.html
 
 ams:
+  google-calendar:
+    enabled: ${AMS_GOOGLE_CALENDAR_ENABLED:false}
+    client-id: ${AMS_GOOGLE_CLIENT_ID:}
+    client-secret: ${AMS_GOOGLE_CLIENT_SECRET:}
+    redirect-uri: ${AMS_GOOGLE_REDIRECT_URI:}
+    token-key: ${AMS_GOOGLE_TOKEN_KEY:}
+    key-version: ${AMS_GOOGLE_KEY_VERSION:1}
   phenikaa:
     enabled: ${AMS_PHENIKAA_ENABLED:false}
     session-key: ${AMS_PHENIKAA_SESSION_KEY:}
