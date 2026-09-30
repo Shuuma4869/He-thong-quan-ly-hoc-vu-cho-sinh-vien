@@ -45,6 +45,10 @@ V8 thêm `sync_run`; Flyway sẽ nâng cấp database V7, không cần xóa volu
 
 Có thể chỉnh `AMS_SYNC_POLL_INTERVAL`, `AMS_SYNC_BATCH_SIZE`, `AMS_SYNC_LOCK_TTL`, `AMS_SYNC_STALE_TIMEOUT`, `AMS_SYNC_MAX_ATTEMPTS`, `AMS_SYNC_BACKOFF` và `AMS_SYNC_MANUAL_COOLDOWN` qua môi trường. Mặc định lần lượt là `2s`, `4`, `2m`, `3m`, `3`, `10s`, `1m`. TTL khóa cần ngắn và được heartbeat gia hạn khi worker còn sống; stale timeout phải dài hơn TTL ít nhất 5 giây. Retry tạm thời dùng cùng run với backoff tăng, không giữ transaction hay khóa chỉ để chờ. `mvnw.cmd verify` chạy worker với adapter giả và PostgreSQL/Redis Testcontainers thật; CI không gọi Phenikaa.
 
+Phase 6B bổ sung lịch tự **xếp hàng**, tách khỏi vòng poll của worker. `AMS_SYNC_AUTO_ENABLED=false` mặc định, kể cả khi worker đã bật. Chỉ bật sau khi có kết nối hợp lệ và cân nhắc tải lên cổng nguồn; scheduler không tự lấy phiên từ trình duyệt. Mặc định nó quét mỗi `5m`, xếp tối đa `4` user/lần, và mỗi user chỉ đến hạn sau `24h` kể từ run gần nhất. Run kết thúc lỗi cũng chờ ít nhất `24h` trước khi xếp lượt mới. Kết nối chưa từng đồng bộ có khoảng lệch ổn định theo UUID để các lượt đầu không cùng đến hạn. Các giá trị tương ứng là `AMS_SYNC_AUTO_SCAN_INTERVAL`, `AMS_SYNC_AUTO_BATCH_SIZE`, `AMS_SYNC_AUTO_INTERVAL` và `AMS_SYNC_AUTO_FAILURE_COOLDOWN`.
+
+Lịch sử run được dọn khi ứng dụng chạy: giữ `90d`, quét mỗi `1h` và xóa tối đa `100` run kết thúc/lần. Có thể chỉnh `AMS_SYNC_RETENTION`, `AMS_SYNC_CLEANUP_INTERVAL`, `AMS_SYNC_CLEANUP_BATCH_SIZE`; cleanup vẫn hoạt động khi tích hợp Phenikaa tắt, nhưng không đụng run đang chờ hoặc đang chạy. `AMS_SYNC_HISTORY_MAX_PAGE_SIZE` mặc định `100`; API lịch sử trả 20 hàng nếu không chỉ định `limit`. Cấu hình quá nhỏ/quá lớn bị từ chối khi khởi động. V9 chỉ thêm/thay chỉ mục; Flyway nâng cấp V8 mà không xóa run cũ.
+
 ## Frontend
 
 ```powershell

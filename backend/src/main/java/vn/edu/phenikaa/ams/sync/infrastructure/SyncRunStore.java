@@ -31,6 +31,52 @@ public class SyncRunStore {
                 userId, runId).stream().findFirst();
     }
 
+    public List<SyncRun> history(UUID userId, Instant before, UUID beforeId, int limit) {
+        if (before == null) {
+            return jdbc.query("select * from sync_run where user_id = ? order by requested_at desc, id desc limit ?",
+                    SyncRunStore::map, userId, limit);
+        }
+        return jdbc.query("select * from sync_run where user_id = ? and "
+                        + "(requested_at < ? or (requested_at = ? and id < ?)) "
+                        + "order by requested_at desc, id desc limit ?",
+                SyncRunStore::map, userId, time(before), time(before), beforeId, limit);
+    }
+
+    public List<UUID> dueUsers(Instant now, long intervalSeconds, long failureCooldownSeconds, int limit) {
+        if (!TransactionSynchronizationManager.isActualTransactionActive())
+            throw new IllegalStateException("Scheduled selection requires a transaction");
+        return jdbc.query("""
+                select u.id from app_user u
+                join phenikaa_connection pc on pc.user_id = u.id and pc.status = 'CONNECTED'
+                left join lateral (
+                    select status, finished_at from sync_run r where r.user_id = u.id
+                    order by requested_at desc, id desc limit 1
+                ) last_run on true
+                where u.account_status = 'ACTIVE'
+                    and not exists (select 1 from sync_run active_run where active_run.user_id = u.id
+                        and active_run.status in ('QUEUED','RUNNING'))
+                    and coalesce(
+                        last_run.finished_at + (case when last_run.status in ('FAILED','PARTIAL')
+                            then ? else ? end) * interval '1 second',
+                        pc.created_at + ? * interval '1 second'
+                            + mod(abs(hashtext(pc.user_id::text)::bigint), ?) * interval '1 second'
+                    ) <= ?
+                order by coalesce(last_run.finished_at, pc.created_at), u.id
+                limit ? for update of u skip locked
+                """, (rs, row) -> rs.getObject(1, UUID.class),
+                failureCooldownSeconds, intervalSeconds, intervalSeconds, intervalSeconds, time(now), limit);
+    }
+
+    public int deleteExpired(Instant cutoff, int limit) {
+        return jdbc.update("""
+                delete from sync_run where id in (
+                    select id from sync_run where status in ('SUCCEEDED','PARTIAL','FAILED')
+                        and finished_at < ? order by finished_at, id
+                        limit ? for update skip locked
+                )
+                """, time(cutoff), limit);
+    }
+
     public SyncRun enqueue(UUID userId, Trigger trigger, Instant now) {
         UUID id = UUID.randomUUID();
         int inserted = jdbc.update("""

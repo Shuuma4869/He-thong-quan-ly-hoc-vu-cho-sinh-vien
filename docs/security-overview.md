@@ -59,3 +59,9 @@ Chưa có rate limiting đăng ký/đăng nhập, MFA, absolute session timeout 
 Hàng `sync_run` chỉ có UUID nội bộ, trạng thái, thời điểm, số attempt và mã lỗi cố định. Worker nạp kết nối/phiên từ server khi thực hiện, không nhận URL tùy ý, không ghi cookie, token, ID người học hoặc response nguồn vào job/log. Khóa Redis dùng UUID user và token ngẫu nhiên; chỉ chủ khóa mới gia hạn hoặc nhả khóa. Metrics chỉ có tag trạng thái/mã lỗi, không có user ID. API trạng thái không mở thêm Actuator endpoint.
 
 Việc mất quyền, ngắt kết nối hoặc hết phiên được kiểm tra lại khi worker bắt đầu và trước transaction ghi. Không có luồng lấy phiên từ trình duyệt để làm cho kiểm thử live thành công. Test dùng dữ liệu tổng hợp và cổng HTTP mock; kết nối thật vẫn phải đến từ quy trình cấp kết nối hợp lệ của AMS.
+
+## Lịch tự động và lịch sử Phase 6B
+
+Lịch tự xếp hàng mặc định tắt. Khi bật, bộ chọn chỉ đọc trạng thái tài khoản, kết nối và run từ PostgreSQL; không giải mã phiên, gọi nguồn hay dùng Redis cooldown thủ công. Khóa hàng user và unique index ngăn hai instance tạo hai run active cho cùng một tài khoản. Worker vẫn kiểm tra lại trạng thái trước khi đọc/ghi, vì kết nối có thể bị ngắt sau lúc xếp hàng.
+
+`GET /api/me/sync/runs` cần đăng nhập và luôn lọc theo UUID từ session. Con trỏ trang không có quyền truy cập riêng: backend xác nhận run mốc thuộc user hiện tại; con trỏ sai hoặc đã hết hạn trả lỗi 400 an toàn. GET không thay đổi state, còn POST thủ công vẫn cần CSRF. Lịch sử trả metadata an toàn như trạng thái, thời điểm và mã lỗi; không trả khóa Redis, phiên nguồn, ID người học hoặc stack trace. Cleanup xóa lịch sử vận hành quá hạn, không dùng nó thay audit log bảo mật.

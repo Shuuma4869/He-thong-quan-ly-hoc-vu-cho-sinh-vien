@@ -1410,3 +1410,7 @@ Hướng Phase 6A **chỉ đề xuất**: trạng thái/lượt đồng bộ, wo
 Phase 6A triển khai hạ tầng được đề xuất ở cuối 5E: lượt đồng bộ bền vững, worker và khóa theo user. Worker chỉ gọi importer hồ sơ và chương trình/danh mục đã có; API kết quả học tập vẫn đọc trực tiếp, lịch/thi vẫn chưa vào pipeline. Không có job ghi `StudentCourse`, `AcademicResult`, `ClassSession` hoặc `Exam`, cũng không tạo snapshot/chênh lệch từ các observation này.
 
 Hai importer nay đọc nguồn ngoài transaction ghi, rồi kiểm tra lại tài khoản, kết nối và thế hệ phiên trước khi lưu. Nếu nguồn trả lỗi, dữ liệu đã lưu không bị xóa. Nếu đọc nguồn thành công nhưng bước ghi thất bại, `lastSuccessfulAccessAt` vẫn phản ánh lần đọc nguồn; trạng thái `sync_run` mới là nơi thể hiện kết quả toàn lượt. Điều này tránh hiểu nhầm metadata kết nối là bằng chứng import thành công. [Thiết kế worker, retry và trạng thái](architecture-overview.md#hạ-tầng-đồng-bộ-phase-6a) có chi tiết.
+
+## Ranh giới sau Phase 6B
+
+Phase 6B chỉ bổ sung lịch tự xếp hàng có kiểm soát, lịch sử có phân trang và dọn run quá hạn. Tự xếp hàng mặc định tắt và chỉ nhắm tới hồ sơ/chương trình đã có importer. Không có phép đối chiếu mới nào cho identity buổi học, lần học hoặc kỳ thi; các kết luận hạn chế nguồn ở Phase 4C và 5D vẫn giữ nguyên. Bảng snapshot/change của Phase 2 là nền schema, chưa được worker ghi hoặc dùng để phát hiện thay đổi. [Chính sách vận hành](architecture-overview.md#vận-hành-đồng-bộ-phase-6b) giải thích thời gian chờ sau lỗi và retention.

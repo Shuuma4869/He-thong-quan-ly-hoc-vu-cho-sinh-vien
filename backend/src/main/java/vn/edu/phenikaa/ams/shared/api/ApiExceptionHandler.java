@@ -24,6 +24,7 @@ public class ApiExceptionHandler {
             case RUN_NOT_FOUND -> HttpStatus.NOT_FOUND;
             case ACCOUNT_UNAVAILABLE -> HttpStatus.FORBIDDEN;
             case QUEUE_UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
+            case INVALID_HISTORY_LIMIT, INVALID_HISTORY_CURSOR -> HttpStatus.BAD_REQUEST;
         };
         var problem = ProblemDetail.forStatusAndDetail(status, switch (exception.code()) {
             case CONNECTION_NOT_FOUND -> "Chưa có kết nối học vụ có thể sử dụng.";
@@ -32,6 +33,8 @@ public class ApiExceptionHandler {
             case RUN_NOT_FOUND -> "Không tìm thấy lượt đồng bộ của tài khoản này.";
             case ACCOUNT_UNAVAILABLE -> "Tài khoản hiện không thể đồng bộ.";
             case QUEUE_UNAVAILABLE -> "Hàng đợi đồng bộ tạm thời không sẵn sàng.";
+            case INVALID_HISTORY_LIMIT -> "Giới hạn trang lịch sử không hợp lệ.";
+            case INVALID_HISTORY_CURSOR -> "Con trỏ lịch sử không hợp lệ hoặc đã hết hạn.";
         });
         problem.setProperty("code", exception.code().name());
         return ResponseEntity.status(status).body(problem);

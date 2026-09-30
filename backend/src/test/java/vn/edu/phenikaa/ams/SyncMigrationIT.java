@@ -31,4 +31,30 @@ class SyncMigrationIT {
             }
         }
     }
+
+    @Test void upgradesV8ToV9WithoutChangingRuns() throws Exception {
+        try (var postgres = new PostgreSQLContainer("postgres:17-alpine")) {
+            postgres.start();
+            var config = Flyway.configure().dataSource(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+            config.target("8").load().migrate();
+            try (var connection = DriverManager.getConnection(postgres.getJdbcUrl(), postgres.getUsername(), postgres.getPassword());
+                 var sql = connection.createStatement()) {
+                sql.execute("insert into app_user(id,email,password_hash,role,account_status) values "
+                        + "('00000000-0000-0000-0000-000000000011','sync-v9@example.test','!synthetic','STUDENT','ACTIVE')");
+                sql.execute("insert into sync_run(id,user_id,trigger_type,status,requested_at,next_attempt_at,updated_at) values "
+                        + "('00000000-0000-0000-0000-000000000012','00000000-0000-0000-0000-000000000011',"
+                        + "'MANUAL','QUEUED',now(),now(),now())");
+                var upgrade = config.target("9").load();
+                assertThat(upgrade.migrate().migrationsExecuted).isEqualTo(1);
+                upgrade.validate();
+                try (var rows = sql.executeQuery("select count(*) from sync_run")) {
+                    rows.next(); assertThat(rows.getInt(1)).isEqualTo(1);
+                }
+                try (var rows = sql.executeQuery("select count(*) from pg_indexes where schemaname='public' "
+                        + "and indexname in ('sync_run_history','sync_run_cleanup','phenikaa_connection_auto_connected')")) {
+                    rows.next(); assertThat(rows.getInt(1)).isEqualTo(3);
+                }
+            }
+        }
+    }
 }

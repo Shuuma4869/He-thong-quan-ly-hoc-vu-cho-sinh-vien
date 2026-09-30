@@ -1,6 +1,7 @@
 package vn.edu.phenikaa.ams.sync.api;
 
 import java.time.Instant;
+import java.util.List;
 import java.util.UUID;
 import io.swagger.v3.oas.annotations.Operation;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -39,6 +40,15 @@ public class SyncController {
         return view(sync.owned(principal.getUserId(), runId));
     }
 
+    @Operation(summary = "Lịch sử đồng bộ của tài khoản hiện tại")
+    @GetMapping("/runs")
+    public HistoryView history(@AuthenticationPrincipal AccountPrincipal principal,
+                               @RequestParam(defaultValue = "20") int limit,
+                               @RequestParam(required = false) String cursor) {
+        var page = sync.history(principal.getUserId(), limit, cursor);
+        return new HistoryView(page.items().stream().map(SyncController::view).toList(), page.nextCursor());
+    }
+
     private static RunView view(SyncRun run) {
         return new RunView(run.id(), run.status().name(), run.trigger().name(), run.requestedAt(),
                 run.startedAt(), run.finishedAt(), run.nextAttemptAt(),
@@ -51,4 +61,5 @@ public class SyncController {
                           Instant finishedAt, Instant nextAttemptAt, String currentStep,
                           String profileStepStatus, String curriculumStepStatus, String failureCode,
                           int attemptCount) {}
+    public record HistoryView(List<RunView> items, String nextCursor) {}
 }
