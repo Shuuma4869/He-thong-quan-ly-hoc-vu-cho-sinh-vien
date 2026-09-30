@@ -76,7 +76,11 @@ ams:
   cors:
     allowed-origins: ${CORS_ALLOWED_ORIGINS:http://localhost:3000}
   sync:
-    schedule:
-      classes: ${SYNC_CLASSES_INTERVAL:PT3M}
-      grades: ${SYNC_GRADES_INTERVAL:PT20M}
-      curriculum: ${SYNC_CURRICULUM_INTERVAL:PT24H}
+    worker-enabled: ${AMS_SYNC_WORKER_ENABLED:true}
+    poll-interval: ${AMS_SYNC_POLL_INTERVAL:2s}
+    batch-size: ${AMS_SYNC_BATCH_SIZE:4}
+    lock-ttl: ${AMS_SYNC_LOCK_TTL:2m}
+    stale-timeout: ${AMS_SYNC_STALE_TIMEOUT:3m}
+    max-attempts: ${AMS_SYNC_MAX_ATTEMPTS:3}
+    backoff: ${AMS_SYNC_BACKOFF:10s}
+    manual-cooldown: ${AMS_SYNC_MANUAL_COOLDOWN:1m}
