@@ -1,6 +1,6 @@
 # Kiến trúc tổng quan
 
-AMS là monorepo gồm Next.js frontend và Spring Boot API. Phase 6A đã có worker tiêu thụ hàng đợi PostgreSQL cho phần dữ liệu được phép nhập; lịch tự tạo lượt đồng bộ theo từng user và change detection vẫn chưa có. Backend tổ chức theo feature, chỉ thêm layer khi cần.
+AMS là monorepo gồm Next.js frontend và Spring Boot API. Worker tiêu thụ hàng đợi PostgreSQL cho phần dữ liệu được phép nhập. Phase 6B có thêm chính sách tự xếp hàng nhưng mặc định tắt; change detection vẫn chưa có. Backend tổ chức theo feature, chỉ thêm layer khi cần.
 
 Sơ đồ dưới đây là kiến trúc mục tiêu, không phải danh sách tính năng đã hoạt động.
 
@@ -123,4 +123,16 @@ Một lượt chạy hai bước: nhập hồ sơ, sau đó nhập mọi lựa c
 
 Lỗi tạm thời (`TIMEOUT`, `NETWORK_ERROR`) được xếp lại cùng run, tối đa ba attempt với backoff tăng dần và không ngủ trong transaction. Hết phiên, schema đổi hoặc lỗi nghiệp vụ không retry. `PARTIAL` chỉ có nghĩa hồ sơ đã ghi thành công nhưng bước chương trình thất bại cuối cùng; nó không phải đánh giá độ đầy đủ của nguồn. Dữ liệu cũ không bị xóa khi refresh lỗi. Job chỉ giữ UUID user và metadata an toàn, không giữ phiên, payload hoặc ID người học. Điểm, lịch học và lịch thi vẫn nằm ngoài worker.
 
-Log và metrics chỉ dùng run UUID, trạng thái, số attempt và mã lỗi an toàn; metrics không gắn user/run ID làm tag. Chưa có cơ chế xóa lịch sử run; cần đặt chính sách retention trước khi vận hành lâu dài. [Schema V8](database-model.md#lượt-đồng-bộ-phase-6a) và [cấu hình local](development-setup.md#worker-đồng-bộ) có chi tiết để tiếp tục phát triển.
+Log và metrics chỉ dùng run UUID, trạng thái, số attempt và mã lỗi an toàn; metrics không gắn user/run ID làm tag. Tại mốc Phase 6A, lịch sử run chưa được dọn; Phase 6B bổ sung chính sách này bên dưới. [Schema V8](database-model.md#lượt-đồng-bộ-phase-6a) và [cấu hình local](development-setup.md#worker-đồng-bộ) có chi tiết để tiếp tục phát triển.
+
+## Vận hành đồng bộ Phase 6B
+
+Tự xếp hàng theo lịch là một công tắc **riêng** với worker. Mặc định `auto-enabled=false`; khi bật, mỗi lần quét chỉ chọn tối đa bốn tài khoản ACTIVE có kết nối CONNECTED và không có run đang chờ/chạy. Scheduler đọc metadata trong database, không giải mã phiên nguồn và không gọi Phenikaa. PostgreSQL khóa hàng user trong lúc chọn rồi tạo run `SCHEDULED` trong cùng transaction ngắn. Instance khác bỏ qua hàng đang khóa; unique index của V8 là lớp bảo vệ cuối. Redis không tham gia quyết định đến hạn, nên sự cố Redis không làm scheduler tạo hàng trùng hay giữ lịch chạy ở một nơi khác.
+
+Sau một lượt kết thúc thành công, lượt kế tiếp đến hạn theo thời điểm **kết thúc** cộng chu kỳ mặc định 24 giờ. Sau `FAILED` hoặc `PARTIAL`, thời gian chờ mặc định cũng là 24 giờ, tránh tạo run mới ở mỗi lần quét khi nguồn đang lỗi. Với kết nối chưa từng có run, lần đầu đến hạn sau thời điểm tạo kết nối cộng một chu kỳ và một khoảng lệch ổn định từ UUID nội bộ. Khoảng lệch này trải yêu cầu ban đầu ra thay vì dồn cùng lúc; nếu rất nhiều tài khoản đã quá hạn sau khi khởi động lại, batch bốn tài khoản mỗi lần quét năm phút vẫn giới hạn tốc độ xếp hàng. Hai importer và worker giữ nguyên phạm vi PROFILE → CURRICULUM, chạy tuần tự trong từng instance; Redis lock/heartbeat và retry Phase 6A không đổi.
+
+`GET /api/me/sync/runs` đọc lịch sử của chính user, mặc định 20 hàng/trang, tối đa 100. Con trỏ trang tiếp theo mã hóa thời điểm yêu cầu và UUID run cuối trang; backend kiểm tra run mốc vẫn thuộc user trước khi dùng. Cách này gọi là *phân trang theo khóa*: trang sau lấy các hàng cũ hơn mốc, nên không phải đi qua offset ngày càng lớn. Con trỏ không phải token phân quyền; nếu mốc đã bị dọn theo retention, client bắt đầu lại từ trang đầu. `/current` vẫn có nghĩa là lượt **gần nhất**, không nhất thiết đang chạy.
+
+Lịch sử `sync_run` chỉ giữ 90 ngày mặc định. Mỗi lượt dọn xóa tối đa 100 run `SUCCEEDED`, `PARTIAL` hoặc `FAILED` có `finished_at` cũ hơn ngưỡng; không đụng `QUEUED`/`RUNNING`, kể cả run quá hạn cần worker phục hồi. Nhiều instance dọn đồng thời vẫn an toàn vì SQL khóa từng batch và bỏ qua hàng đã bị instance khác giữ. Nếu không còn run nào sau dọn, `/current` trả `RUN_NOT_FOUND` như trước. Lịch sử này phục vụ theo dõi đồng bộ, **không phải** audit log bảo mật giữ lâu dài. Metrics chỉ ghi số run tự xếp hàng và số hàng dọn, không gắn user ID.
+
+Schema nền `AcademicSnapshotMetadata` và `ScheduleChange` vẫn tồn tại nhưng chưa có pipeline tạo snapshot hoặc change. Identity của buổi học và quan hệ lịch thi với lần học chưa đủ chắc chắn để phát hiện `ROOM_CHANGED`, `EXAM_CHANGED` hay thay đổi điểm ở mức entity. Phase 6B không ghi StudentCourse, AcademicResult, ClassSession, Exam hoặc change record từ nguồn; [bằng chứng còn thiếu](phenikaa-integration.md#phase-5d-kết-luận-nghiên-cứu-ngữ-nghĩa-kết-quả-học-tập) phải được giải quyết trước khi mở các khả năng đó.

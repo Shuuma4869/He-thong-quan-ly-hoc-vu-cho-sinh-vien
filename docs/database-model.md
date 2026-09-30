@@ -121,6 +121,7 @@ Unique index phục vụ cả chống trùng và tra cứu theo owner/identity. 
 - V6: kết nối Phenikaa mã hóa, ownership và trạng thái truy cập.
 - V7: ánh xạ chương trình/môn/nhóm nguồn; revision chưa biết; nhóm bắt buộc/tự chọn và yêu cầu số môn.
 - V8: lượt đồng bộ, hàng đợi và index chống hai lượt active cùng user.
+- V9: chỉ mục phục vụ lịch sử có cursor, dọn run kết thúc và chọn kết nối đủ điều kiện tự đồng bộ; không thêm bảng.
 
 ## Lượt đồng bộ Phase 6A
 
@@ -129,6 +130,12 @@ Unique index phục vụ cả chống trùng và tra cứu theo owner/identity. 
 Partial unique index trên `user_id` khi trạng thái `QUEUED` hoặc `RUNNING` bảo vệ quy tắc một lượt active/user ngay cả khi nhiều instance cùng nhận request. Index `(next_attempt_at, requested_at)` cho hàng đến hạn, `heartbeat_at` cho phục hồi stale và `(user_id, requested_at DESC)` cho API trạng thái. Worker claim bằng một câu `UPDATE ... RETURNING` với `FOR UPDATE SKIP LOCKED`; các lần ghi kết quả đều kèm `id`, trạng thái `RUNNING` và `attempt_count` để worker cũ không hoàn tất lượt đã được phục hồi. Retry dùng lại cùng hàng, không sinh run con.
 
 `PARTIAL` nghĩa bước hồ sơ đã ghi xong nhưng chương trình thất bại sau lần thử cuối; không nói dữ liệu nguồn là đầy đủ. Nếu process chết đúng giữa commit hồ sơ và ghi kết quả bước, bước hồ sơ có thể được chạy lại. Importer giữ UUID và tránh tạo bản ghi trùng; metadata bước có thể thận trọng hơn dữ liệu đã lưu. V8 không sửa V1–V7 và không thêm bảng snapshot/change mới.
+
+## Chỉ mục vận hành Phase 6B
+
+V9 thay chỉ mục lịch sử V8 bằng `(user_id, requested_at DESC, id DESC)`, khớp thứ tự của phân trang theo khóa; UUID phân biệt hai run có cùng thời điểm. Chỉ mục một phần `(finished_at, id)` cho các trạng thái kết thúc giúp dọn lịch sử cũ theo batch. Chỉ mục một phần trên kết nối `CONNECTED` hỗ trợ chọn ứng viên tự đồng bộ mà không đọc phiên mã hóa. V8 và các hàng `sync_run` hiện có không bị sửa/xóa trong migration; kiểm thử nâng cấp V8→V9 xác nhận điều này.
+
+Scheduler quyết định đến hạn từ lần run gần nhất, không tạo bảng lịch riêng. Kết quả `FAILED`/`PARTIAL` vẫn có thời gian chờ trước khi xếp lại, nên nguồn lỗi không sinh vô hạn run mới. Dọn lịch sử chỉ xét `finished_at` của run kết thúc, tối đa một batch mỗi lần; run đang chờ/chạy được giữ để worker xử lý hoặc phục hồi. Nếu mọi run cũ đã bị dọn, truy vấn lượt gần nhất không dựng bản ghi giả. `sync_run` là lịch sử vận hành có thời hạn, không thay thế bảng audit bảo mật.
 
 V1/V2 giữ nguyên; `ddl-auto=validate` giữ nguyên. Migration không seed học vụ hoặc sao chép dữ liệu cá nhân. Kiểm thử bao gồm database sạch, nâng cấp V2 → V5 giữ nguyên account/settings, chạy lại không tạo migration trùng, mapping tất cả entity, JSONB/decimal/time, constraint/ownership và optimistic locking. Test dùng dữ liệu tổng hợp `@example.test`, không dùng tài khoản trường.
 
