@@ -39,6 +39,8 @@ V2 chuẩn hóa email về chữ thường, bổ sung password hash/trạng thá
 
 V3–V5 thêm schema học vụ, không tự tạo hồ sơ sinh viên hay seed dữ liệu. `mvnw.cmd verify` kiểm tra database sạch và nâng cấp từ V2, mapping JPA và constraint bằng PostgreSQL thật trong Testcontainers. Phase 2 chưa có API nhập/sửa học vụ; xem [database model](database-model.md) trước khi thêm use case.
 
+V10 thêm bảng kết nối Google Calendar riêng; không sửa hoặc seed các bảng học vụ. Tính năng `AMS_GOOGLE_CALENDAR_ENABLED=false` mặc định, nên không cần OAuth client hay khóa Google để khởi động AMS. Nếu cần thử kết nối thật, làm theo [hướng dẫn Google Calendar](google-calendar-integration.md); đừng dùng các biến Google mẫu cũ hoặc đưa khóa vào repository.
+
 ## Worker đồng bộ
 
 V8 thêm `sync_run`; Flyway sẽ nâng cấp database V7, không cần xóa volume. Khi `AMS_PHENIKAA_ENABLED=false` (mặc định), API và worker Phenikaa không hoạt động. Nếu bật, worker poll hàng đợi mặc định mỗi 2 giây; đây chỉ là lịch **tiêu thụ** run đã được yêu cầu, không tự tạo run định kỳ cho user. `AMS_SYNC_WORKER_ENABLED=false` tắt polling trong môi trường kiểm thử/local nhưng vẫn cho phép gọi worker trực tiếp trong test. Không bật tính năng bằng một khóa giả hoặc tự chép phiên trình duyệt vào database.

@@ -6,7 +6,7 @@ AMS hỗ trợ sinh viên theo dõi kết quả học tập, chương trình đ�
 
 AMS là dự án cá nhân, không phải hệ thống chính thức của Phenikaa University và không đại diện cho nhà trường. Các tích hợp chỉ làm việc với dữ liệu mà tài khoản người dùng được phép truy cập.
 
-> Đã có tài khoản AMS, đăng nhập bằng session, cài đặt cá nhân và domain/database học vụ. Chương trình đào tạo, danh mục môn và nhóm môn đã được nhập trong phạm vi xác minh; kết quả học tập và chi tiết có API chỉ đọc. Hạ tầng đồng bộ làm mới **chỉ hồ sơ và phần chương trình/danh mục đã được phép lưu**. Phase 6B thêm chính sách tự xếp hàng (mặc định tắt), lịch sử có phân trang và dọn lịch sử cũ. **Chưa lưu lần học hoặc kết quả học tập** vì chưa đủ căn cứ chọn kết quả hiện hành và xác định tín chỉ/GPA cho từng lần học. Chưa lưu lịch/thi, tiên quyết hoặc tự chọn chương trình hiện tại. Chưa có giao diện kết nối Phenikaa; tính năng backend mặc định tắt. Google Calendar và email chưa kết nối; dashboard vẫn là giao diện nền. Xem [ranh giới đọc dữ liệu Phase 5E](docs/phenikaa-integration.md#phase-5e-api-đọc-trực-tiếp-và-ranh-giới-nguồn) và [vận hành đồng bộ Phase 6B](docs/architecture-overview.md#vận-hành-đồng-bộ-phase-6b).
+> Đã có tài khoản AMS, đăng nhập bằng session, cài đặt cá nhân và domain/database học vụ. Chương trình đào tạo, danh mục môn và nhóm môn đã được nhập trong phạm vi xác minh; kết quả học tập và chi tiết có API chỉ đọc. Hạ tầng đồng bộ làm mới **chỉ hồ sơ và phần chương trình/danh mục đã được phép lưu**. Phase 6B thêm chính sách tự xếp hàng (mặc định tắt), lịch sử có phân trang và dọn lịch sử cũ. **Chưa lưu lần học hoặc kết quả học tập** vì chưa đủ căn cứ chọn kết quả hiện hành và xác định tín chỉ/GPA cho từng lần học. Chưa lưu lịch/thi, tiên quyết hoặc tự chọn chương trình hiện tại. Chưa có giao diện kết nối Phenikaa; tính năng backend mặc định tắt. Phase 7A thêm nền kết nối Google Calendar và tạo lịch riêng, cũng tắt mặc định; **chưa tạo sự kiện** hoặc xác minh với tài khoản Google thật. Email chưa kết nối; dashboard vẫn là giao diện nền. Xem [ranh giới đọc dữ liệu Phase 5E](docs/phenikaa-integration.md#phase-5e-api-đọc-trực-tiếp-và-ranh-giới-nguồn), [vận hành đồng bộ Phase 6B](docs/architecture-overview.md#vận-hành-đồng-bộ-phase-6b) và [kết nối Google Calendar](docs/google-calendar-integration.md).
 
 ## Phạm vi chính
 
@@ -66,6 +66,8 @@ Mở `/register` để tạo tài khoản sinh viên, sau đó đăng nhập t�
 
 Phần Phenikaa không tự kết nối khi chạy local. Không cần điền khóa để dùng tài khoản AMS. Nếu phát triển luồng nhập hồ sơ, đọc trước [cấu hình khóa, giới hạn cấp phiên và kết quả Phase 4B](docs/phenikaa-integration.md#phase-4b-kết-nối-mã-hóa-và-nhập-hồ-sơ); không sao chép token từ DevTools vào source hoặc `.env.example`.
 
+Google Calendar cũng tắt mặc định. Muốn thử kết nối, cần tự cấu hình OAuth client và khóa mã hóa riêng theo [hướng dẫn này](docs/google-calendar-integration.md). Không cần cấu hình Google để dùng AMS thông thường. Kết nối thành công chỉ tạo một lịch phụ của AMS; chưa thêm lịch học, lịch thi hay bất kỳ sự kiện nào.
+
 Khi đã có kết nối Phenikaa được cấp qua quy trình nội bộ, backend bật tính năng sẽ có các endpoint `/api/me/academic/source/...` để đọc chương trình và kết quả của chính tài khoản AMS. Chúng **không** tạo `StudentCourse` hoặc `AcademicResult`, không bảo đảm nguồn trả đủ mọi hàng và hiện chưa có màn hình học vụ hoàn chỉnh. Không bật tính năng chỉ để thử API nếu chưa có khóa mã hóa và kết nối hợp lệ.
 
 Khi đã có kết nối hợp lệ, `POST /api/me/sync` yêu cầu làm mới hồ sơ rồi đến những chương trình nguồn có thể đọc; request chỉ xếp hàng và trả `202`, không chờ cổng trường. Xem lượt gần nhất ở `GET /api/me/sync/current`, một lượt cụ thể ở `/api/me/sync/runs/{runId}`, hoặc lịch sử ở `/api/me/sync/runs?limit=20`. Tự xếp hàng theo lịch **mặc định tắt** và phải được người vận hành bật riêng. Worker không tự tạo kết nối từ phiên trình duyệt. [Trạng thái, lịch chạy và giới hạn](docs/architecture-overview.md#vận-hành-đồng-bộ-phase-6b) được ghi riêng.
@@ -98,4 +100,4 @@ E2E cần Java 21, Docker và cổng `3000`, `8080` trống. Playwright tự kh�
 - Không tự merge, rebase `main`, force push hoặc xóa branch review.
 - Tất cả commit message viết bằng tiếng Việt, ngắn gọn và phản ánh đúng thay đổi.
 
-Xem thêm tại [tài liệu dự án](docs/project-overview.md), [mô hình dữ liệu học vụ](docs/database-model.md), [kết quả khảo sát kết nối Phenikaa](docs/phenikaa-integration.md) và [hướng dẫn môi trường](docs/development-setup.md).
+Xem thêm tại [tài liệu dự án](docs/project-overview.md), [mô hình dữ liệu học vụ](docs/database-model.md), [kết quả khảo sát kết nối Phenikaa](docs/phenikaa-integration.md), [kết nối Google Calendar](docs/google-calendar-integration.md) và [hướng dẫn môi trường](docs/development-setup.md).
