@@ -1,6 +1,6 @@
 # Kiến trúc tổng quan
 
-AMS là monorepo gồm Next.js frontend và Spring Boot API. Worker/scheduling được thiết kế chạy ngoài request flow; bootstrap mới có contract `SyncJobDispatcher`, chưa có scheduler hay queue consumer. Backend tổ chức theo feature, chỉ thêm layer khi cần.
+AMS là monorepo gồm Next.js frontend và Spring Boot API. Phase 6A đã có worker tiêu thụ hàng đợi PostgreSQL cho phần dữ liệu được phép nhập; lịch tự tạo lượt đồng bộ theo từng user và change detection vẫn chưa có. Backend tổ chức theo feature, chỉ thêm layer khi cần.
 
 Sơ đồ dưới đây là kiến trúc mục tiêu, không phải danh sách tính năng đã hoạt động.
 
@@ -111,4 +111,16 @@ Quy chế mô tả cách xử lý học lại, cải thiện điểm, tín chỉ
 
 Client nhận mã tham chiếu dạng băm cho chương trình, đăng ký và chi tiết. Mã này không phải UUID domain hay khóa ổn định lâu dài. Mỗi lần dùng lại, backend đọc danh sách thuộc user hiện tại và chỉ chấp nhận mã khớp một hàng trong đó; không gọi portal bằng ID do browser tự đưa. Chi tiết được đọc lại từ nguồn và đối chiếu điểm thành phần; nếu hai lượt đọc không khớp, API báo lỗi thay vì ghép dữ liệu cũ và mới. Không lưu bản sao kết quả vào PostgreSQL hoặc Redis.
 
-Các request học vụ trực tiếp có giới hạn tần suất ngắn theo user và loại thao tác bằng khóa Redis chỉ chứa UUID nội bộ. Bộ đọc mở transaction ngắn để kiểm tra kết nối/phiên mã hóa, đóng transaction trước khi gọi HTTP, rồi mở transaction ngắn khác để cập nhật trạng thái kết nối. Đường nhập hồ sơ/chương trình cũ vẫn giữ khóa qua HTTP; đó là khoản nợ kỹ thuật riêng, không bị che bằng thay đổi Phase 5E. [Hợp đồng endpoint và các giới hạn](phenikaa-integration.md#phase-5e-api-đọc-trực-tiếp-và-ranh-giới-nguồn) được ghi ở tài liệu kết nối.
+Các request học vụ trực tiếp có giới hạn tần suất ngắn theo user và loại thao tác bằng khóa Redis chỉ chứa UUID nội bộ. Bộ đọc mở transaction ngắn để kiểm tra kết nối/phiên mã hóa, đóng transaction trước khi gọi HTTP, rồi mở transaction ngắn khác để cập nhật trạng thái kết nối. Trước Phase 6A, đường nhập hồ sơ/chương trình còn giữ khóa qua HTTP; phần này đã được tách ở Phase 6A như mô tả bên dưới. [Hợp đồng endpoint và các giới hạn](phenikaa-integration.md#phase-5e-api-đọc-trực-tiếp-và-ranh-giới-nguồn) được ghi ở tài liệu kết nối.
+
+## Hạ tầng đồng bộ Phase 6A
+
+`POST /api/me/sync` chỉ tạo một `SyncRun` trạng thái `QUEUED` trong PostgreSQL và trả `202`; user bấm lại khi đang `QUEUED` hoặc `RUNNING` sẽ nhận cùng lượt, không tạo hàng mới. API trạng thái chỉ đọc database và chỉ cho xem lượt của chính user. Chưa có màn hình Sync Center hoặc lịch tự động tạo lượt theo từng tài khoản. Tính năng chỉ có khi bật kết nối Phenikaa và đã có kết nối được cấp hợp lệ; đăng nhập vào cổng trường trong trình duyệt không tự cấp kết nối AMS.
+
+Worker poll các hàng đến hạn và claim bằng một lệnh SQL có `FOR UPDATE SKIP LOCKED`, nên hai backend không lấy cùng một hàng. PostgreSQL giữ trạng thái lâu bền; Redis chỉ giữ khóa theo UUID user và cooldown cho yêu cầu thủ công. Khóa có token ngẫu nhiên, TTL và thao tác gia hạn/nhả có so khớp chủ sở hữu. Trong lúc gọi nguồn, heartbeat gia hạn khóa và cập nhật thời điểm sống của run. Nếu process chết, khóa hết hạn; worker khác chỉ phục hồi `RUNNING` đã quá hạn sau khi xác nhận không còn khóa. Nếu worker cũ tỉnh lại, kiểm tra attempt của run trong transaction ghi sẽ ngăn nó ghi sau lượt mới.
+
+Một lượt chạy hai bước: nhập hồ sơ, sau đó nhập mọi lựa chọn chương trình mà nguồn trả về (tối đa tám để có giới hạn tải). Mỗi bước dùng importer đã có, giữ UUID và quy tắc không xóa dữ liệu nguồn vắng mặt. Bộ đọc HTTP của hai importer được tách khỏi transaction ghi. Sau khi đọc, transaction ngắn khóa user, kiểm tra lại kết nối/phiên và quyền sở hữu trước khi lưu. Metadata `lastSuccessfulAccessAt` đo lần **đọc nguồn** thành công; nếu ghi database sau đó thất bại, dữ liệu học vụ rollback nhưng thời điểm đọc nguồn vẫn được giữ. Đây là thay đổi có chủ ý so với transaction dài trước 6A.
+
+Lỗi tạm thời (`TIMEOUT`, `NETWORK_ERROR`) được xếp lại cùng run, tối đa ba attempt với backoff tăng dần và không ngủ trong transaction. Hết phiên, schema đổi hoặc lỗi nghiệp vụ không retry. `PARTIAL` chỉ có nghĩa hồ sơ đã ghi thành công nhưng bước chương trình thất bại cuối cùng; nó không phải đánh giá độ đầy đủ của nguồn. Dữ liệu cũ không bị xóa khi refresh lỗi. Job chỉ giữ UUID user và metadata an toàn, không giữ phiên, payload hoặc ID người học. Điểm, lịch học và lịch thi vẫn nằm ngoài worker.
+
+Log và metrics chỉ dùng run UUID, trạng thái, số attempt và mã lỗi an toàn; metrics không gắn user/run ID làm tag. Chưa có cơ chế xóa lịch sử run; cần đặt chính sách retention trước khi vận hành lâu dài. [Schema V8](database-model.md#lượt-đồng-bộ-phase-6a) và [cấu hình local](development-setup.md#worker-đồng-bộ) có chi tiết để tiếp tục phát triển.

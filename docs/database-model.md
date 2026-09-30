@@ -2,7 +2,7 @@
 
 ## Phạm vi hiện tại
 
-Phase 2 đã tạo model học vụ chuẩn hóa. Phase 4B thêm kết nối Phenikaa mã hóa và use case nhập hồ sơ. Phase 5B thêm nhập chương trình, danh mục môn và nhóm có bằng chứng nguồn. Phase 5E mở API đọc trực tiếp kết quả học tập; điểm/lịch vẫn chỉ là observation, chưa được lưu vì thiếu liên kết nguồn đáng tin cậy. API đọc không thêm migration hay thay đổi quan hệ trong sơ đồ dưới đây. Chưa có API CRUD học vụ, bộ tính GPA hoặc change detection engine.
+Phase 2 đã tạo model học vụ chuẩn hóa. Phase 4B thêm kết nối Phenikaa mã hóa và use case nhập hồ sơ. Phase 5B thêm nhập chương trình, danh mục môn và nhóm có bằng chứng nguồn. Phase 5E mở API đọc trực tiếp kết quả học tập. Phase 6A thêm V8 để ghi trạng thái các lượt làm mới hồ sơ/chương trình. Điểm/lịch vẫn chỉ là observation, chưa được lưu vì thiếu liên kết nguồn đáng tin cậy. Chưa có API CRUD học vụ, bộ tính GPA hoặc change detection engine.
 
 ## Ownership và persistence
 
@@ -20,6 +20,7 @@ Phase 4B thêm repository cho kết nối và hồ sơ, cùng application servic
 erDiagram
     app_user ||--o| student_profile : owns
     app_user ||--o| phenikaa_connection : owns
+    app_user ||--o{ sync_run : requests
     student_profile ||--o{ semester : has
     student_profile ||--o{ course : has
     student_profile ||--o{ curriculum : has
@@ -119,6 +120,15 @@ Unique index phục vụ cả chống trùng và tra cứu theo owner/identity. 
 - V5: snapshot metadata và schedule change.
 - V6: kết nối Phenikaa mã hóa, ownership và trạng thái truy cập.
 - V7: ánh xạ chương trình/môn/nhóm nguồn; revision chưa biết; nhóm bắt buộc/tự chọn và yêu cầu số môn.
+- V8: lượt đồng bộ, hàng đợi và index chống hai lượt active cùng user.
+
+## Lượt đồng bộ Phase 6A
+
+`sync_run` lưu UUID lượt, UUID user, `MANUAL`/`SCHEDULED`, trạng thái `QUEUED`/`RUNNING`/`SUCCEEDED`/`PARTIAL`/`FAILED`, thời điểm yêu cầu/bắt đầu/kết thúc, heartbeat, thời điểm thử lại, bước hiện tại, kết quả riêng của hồ sơ và chương trình, mã lỗi an toàn và số attempt. Không có cột phiên mã hóa, JSON payload hay ID từ Phenikaa. FK tới `app_user` mặc định chặn xóa user khi còn lịch sử run; Phase 6A chưa mở luồng xóa tài khoản.
+
+Partial unique index trên `user_id` khi trạng thái `QUEUED` hoặc `RUNNING` bảo vệ quy tắc một lượt active/user ngay cả khi nhiều instance cùng nhận request. Index `(next_attempt_at, requested_at)` cho hàng đến hạn, `heartbeat_at` cho phục hồi stale và `(user_id, requested_at DESC)` cho API trạng thái. Worker claim bằng một câu `UPDATE ... RETURNING` với `FOR UPDATE SKIP LOCKED`; các lần ghi kết quả đều kèm `id`, trạng thái `RUNNING` và `attempt_count` để worker cũ không hoàn tất lượt đã được phục hồi. Retry dùng lại cùng hàng, không sinh run con.
+
+`PARTIAL` nghĩa bước hồ sơ đã ghi xong nhưng chương trình thất bại sau lần thử cuối; không nói dữ liệu nguồn là đầy đủ. Nếu process chết đúng giữa commit hồ sơ và ghi kết quả bước, bước hồ sơ có thể được chạy lại. Importer giữ UUID và tránh tạo bản ghi trùng; metadata bước có thể thận trọng hơn dữ liệu đã lưu. V8 không sửa V1–V7 và không thêm bảng snapshot/change mới.
 
 V1/V2 giữ nguyên; `ddl-auto=validate` giữ nguyên. Migration không seed học vụ hoặc sao chép dữ liệu cá nhân. Kiểm thử bao gồm database sạch, nâng cấp V2 → V5 giữ nguyên account/settings, chạy lại không tạo migration trùng, mapping tất cả entity, JSONB/decimal/time, constraint/ownership và optimistic locking. Test dùng dữ liệu tổng hợp `@example.test`, không dùng tài khoản trường.
 

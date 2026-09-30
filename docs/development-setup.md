@@ -39,6 +39,12 @@ V2 chuẩn hóa email về chữ thường, bổ sung password hash/trạng thá
 
 V3–V5 thêm schema học vụ, không tự tạo hồ sơ sinh viên hay seed dữ liệu. `mvnw.cmd verify` kiểm tra database sạch và nâng cấp từ V2, mapping JPA và constraint bằng PostgreSQL thật trong Testcontainers. Phase 2 chưa có API nhập/sửa học vụ; xem [database model](database-model.md) trước khi thêm use case.
 
+## Worker đồng bộ
+
+V8 thêm `sync_run`; Flyway sẽ nâng cấp database V7, không cần xóa volume. Khi `AMS_PHENIKAA_ENABLED=false` (mặc định), API và worker Phenikaa không hoạt động. Nếu bật, worker poll hàng đợi mặc định mỗi 2 giây; đây chỉ là lịch **tiêu thụ** run đã được yêu cầu, không tự tạo run định kỳ cho user. `AMS_SYNC_WORKER_ENABLED=false` tắt polling trong môi trường kiểm thử/local nhưng vẫn cho phép gọi worker trực tiếp trong test. Không bật tính năng bằng một khóa giả hoặc tự chép phiên trình duyệt vào database.
+
+Có thể chỉnh `AMS_SYNC_POLL_INTERVAL`, `AMS_SYNC_BATCH_SIZE`, `AMS_SYNC_LOCK_TTL`, `AMS_SYNC_STALE_TIMEOUT`, `AMS_SYNC_MAX_ATTEMPTS`, `AMS_SYNC_BACKOFF` và `AMS_SYNC_MANUAL_COOLDOWN` qua môi trường. Mặc định lần lượt là `2s`, `4`, `2m`, `3m`, `3`, `10s`, `1m`. TTL khóa cần ngắn và được heartbeat gia hạn khi worker còn sống; stale timeout phải dài hơn TTL ít nhất 5 giây. Retry tạm thời dùng cùng run với backoff tăng, không giữ transaction hay khóa chỉ để chờ. `mvnw.cmd verify` chạy worker với adapter giả và PostgreSQL/Redis Testcontainers thật; CI không gọi Phenikaa.
+
 ## Frontend
 
 ```powershell
