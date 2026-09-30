@@ -230,6 +230,45 @@ class SyncInfrastructureIT {
         assertThat(jdbc.queryForObject("select count(*) from curriculum where profile_id = ?", Integer.class, profile)).isEqualTo(1);
     }
 
+    @Test void laterCurriculumFailureKeepsEarlierOptionAndRetryDoesNotDuplicateIt() {
+        connect(owner);
+        var second = new CurriculumOption("synthetic-curriculum-2", "TEST-CT-2",
+                "Chương trình giả định 2", null, new BigDecimal("3"));
+        when(http.fetchCurricula(any())).thenReturn(List.of(option, second));
+        when(http.fetchCurriculum(any(), eq(option)))
+                .thenReturn(new CurriculumObservation(option, List.of(), List.of()));
+        when(http.fetchCurriculum(any(), eq(second)))
+                .thenThrow(new PhenikaaClientException(PhenikaaClientException.Code.TIMEOUT))
+                .thenReturn(new CurriculumObservation(second, List.of(), List.of()));
+        UUID id = sync.dispatchAcademicSync(owner.getId(), SyncJobDispatcher.Trigger.MANUAL).jobId();
+        worker.runOnce();
+        assertThat(runs.owned(owner.getId(), id).orElseThrow().status()).isEqualTo(SyncRun.Status.QUEUED);
+        UUID profile = jdbc.queryForObject("select id from student_profile where user_id = ?", UUID.class, owner.getId());
+        assertThat(jdbc.queryForObject("select count(*) from curriculum where profile_id = ?", Integer.class, profile)).isEqualTo(1);
+        jdbc.update("update sync_run set next_attempt_at = now() - interval '1 second' where id = ?", id);
+        worker.runOnce();
+        assertThat(runs.owned(owner.getId(), id).orElseThrow().status()).isEqualTo(SyncRun.Status.SUCCEEDED);
+        assertThat(jdbc.queryForObject("select count(*) from curriculum where profile_id = ?", Integer.class, profile)).isEqualTo(2);
+    }
+
+    @Test void permanentFailureInLaterCurriculumOptionIsPartial() {
+        connect(owner);
+        var second = new CurriculumOption("synthetic-curriculum-2", "TEST-CT-2",
+                "Chương trình giả định 2", null, new BigDecimal("3"));
+        when(http.fetchCurricula(any())).thenReturn(List.of(option, second));
+        when(http.fetchCurriculum(any(), eq(option)))
+                .thenReturn(new CurriculumObservation(option, List.of(), List.of()));
+        when(http.fetchCurriculum(any(), eq(second)))
+                .thenThrow(new PhenikaaClientException(PhenikaaClientException.Code.UNEXPECTED_SCHEMA));
+        UUID id = sync.dispatchAcademicSync(owner.getId(), SyncJobDispatcher.Trigger.MANUAL).jobId();
+        worker.runOnce();
+        var result = runs.owned(owner.getId(), id).orElseThrow();
+        assertThat(result.status()).isEqualTo(SyncRun.Status.PARTIAL);
+        assertThat(result.curriculumStepStatus()).isEqualTo(SyncRun.StepStatus.FAILED);
+        UUID profile = jdbc.queryForObject("select id from student_profile where user_id = ?", UUID.class, owner.getId());
+        assertThat(jdbc.queryForObject("select count(*) from curriculum where profile_id = ?", Integer.class, profile)).isEqualTo(1);
+    }
+
     @Test void networkFailureStopsAfterBoundedAttemptsAndKeepsOldData() {
         connect(owner);
         when(http.fetchProfile(any())).thenThrow(new PhenikaaClientException(PhenikaaClientException.Code.NETWORK_ERROR));
