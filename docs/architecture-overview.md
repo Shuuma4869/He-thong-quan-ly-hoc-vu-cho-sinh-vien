@@ -2,7 +2,7 @@
 
 AMS là monorepo gồm Next.js frontend và Spring Boot API. Worker tiêu thụ hàng đợi PostgreSQL cho phần dữ liệu được phép nhập. Phase 6B có thêm chính sách tự xếp hàng nhưng mặc định tắt; change detection vẫn chưa có. Backend tổ chức theo feature, chỉ thêm layer khi cần.
 
-Sơ đồ dưới đây là kiến trúc mục tiêu, không phải danh sách tính năng đã hoạt động.
+Sơ đồ dưới đây là kiến trúc mục tiêu, không phải danh sách tính năng đã hoạt động. Phase 7A chỉ có luồng kết nối/lịch phụ Google riêng, chưa nối vào change detection hoặc worker.
 
 ```text
 Next.js UI
@@ -136,3 +136,9 @@ Sau một lượt kết thúc thành công, lượt kế tiếp đến hạn the
 Lịch sử `sync_run` chỉ giữ 90 ngày mặc định. Mỗi lượt dọn xóa tối đa 100 run `SUCCEEDED`, `PARTIAL` hoặc `FAILED` có `finished_at` cũ hơn ngưỡng; không đụng `QUEUED`/`RUNNING`, kể cả run quá hạn cần worker phục hồi. Nhiều instance dọn đồng thời vẫn an toàn vì SQL khóa từng batch và bỏ qua hàng đã bị instance khác giữ. Nếu không còn run nào sau dọn, `/current` trả `RUN_NOT_FOUND` như trước. Lịch sử này phục vụ theo dõi đồng bộ, **không phải** audit log bảo mật giữ lâu dài. Metrics chỉ ghi số run tự xếp hàng và số hàng dọn, không gắn user ID.
 
 Schema nền `AcademicSnapshotMetadata` và `ScheduleChange` vẫn tồn tại nhưng chưa có pipeline tạo snapshot hoặc change. Identity của buổi học và quan hệ lịch thi với lần học chưa đủ chắc chắn để phát hiện `ROOM_CHANGED`, `EXAM_CHANGED` hay thay đổi điểm ở mức entity. Phase 6B không ghi StudentCourse, AcademicResult, ClassSession, Exam hoặc change record từ nguồn; [bằng chứng còn thiếu](phenikaa-integration.md#phase-5d-kết-luận-nghiên-cứu-ngữ-nghĩa-kết-quả-học-tập) phải được giải quyết trước khi mở các khả năng đó.
+
+## Nền kết nối Google Calendar Phase 7A
+
+Frontend `/settings` gọi các endpoint `/api/me/connections/google-calendar/...` bằng session AMS và CSRF. Backend tách ba phần: `GoogleCalendarService` điều phối trạng thái; OAuth gateway dùng Spring Security OAuth2 Client để đổi code/refresh; Calendar gateway chỉ gọi API tạo/đọc **lịch phụ**. Redis giữ state OAuth dùng một lần và khóa thao tác ngắn; PostgreSQL giữ kết nối, token mã hóa và ID lịch. Không có event worker hoặc đường từ dữ liệu học vụ sang Google.
+
+Các lệnh SQL ngắn hoàn tất trước/sau HTTP; không giữ transaction database trong lúc chờ Google. Khi đổi code xong nhưng chưa lưu token mà process chết, người dùng bắt đầu lại OAuth. Khi token đã lưu nhưng chưa tạo được lịch, trạng thái `SETUP_REQUIRED` cho phép thử lại. Khi Google đã tạo lịch nhưng process chết trước lúc lưu ID, có thể còn lịch phụ mồ côi; không mở rộng scope để quét mọi lịch chỉ để xử lý trường hợp hiếm này. [Luồng, lỗi và cách cấu hình](google-calendar-integration.md) mô tả ranh giới đó.

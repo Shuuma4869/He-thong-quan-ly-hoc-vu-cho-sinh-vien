@@ -50,7 +50,7 @@ Email tài khoản và email nhận thông báo chưa được xác minh; không
 
 Học vụ được phân vùng theo StudentProfile liên kết với user. FK ghép chặn liên kết chéo hồ sơ, nhưng không thay thế authorization: API đọc học vụ và đồng bộ lấy user từ session rồi kiểm tra ownership ở backend. Chưa có API CRUD học vụ. Snapshot metadata và change chỉ lưu dữ liệu chuẩn hóa, không lưu raw credential/session hoặc response nguồn.
 
-Chưa có rate limiting đăng ký/đăng nhập, MFA, absolute session timeout hay quy trình quản trị/recovery. Bảng audit hiện mới là schema nền, chưa ghi sự kiện. OAuth và mã hóa token tích hợp chưa triển khai vì chưa có kết nối ngoài. Cần bổ sung và đánh giá các biện pháp bảo vệ phù hợp trước khi mở đăng ký trên internet; test Phase 1 không thay thế đánh giá bảo mật production.
+Chưa có rate limiting đăng ký/đăng nhập, MFA, absolute session timeout hay quy trình quản trị/recovery. Bảng audit hiện mới là schema nền, chưa ghi sự kiện. OAuth Google Calendar đã có nền kết nối ở Phase 7A nhưng tắt mặc định, chưa kiểm chứng live và chưa tạo event. Cần bổ sung và đánh giá các biện pháp bảo vệ phù hợp trước khi mở đăng ký trên internet; test Phase 1/7A không thay thế đánh giá bảo mật production.
 
 ## Yêu cầu đồng bộ Phase 6A
 
@@ -59,6 +59,12 @@ Chưa có rate limiting đăng ký/đăng nhập, MFA, absolute session timeout 
 Hàng `sync_run` chỉ có UUID nội bộ, trạng thái, thời điểm, số attempt và mã lỗi cố định. Worker nạp kết nối/phiên từ server khi thực hiện, không nhận URL tùy ý, không ghi cookie, token, ID người học hoặc response nguồn vào job/log. Khóa Redis dùng UUID user và token ngẫu nhiên; chỉ chủ khóa mới gia hạn hoặc nhả khóa. Metrics chỉ có tag trạng thái/mã lỗi, không có user ID. API trạng thái không mở thêm Actuator endpoint.
 
 Việc mất quyền, ngắt kết nối hoặc hết phiên được kiểm tra lại khi worker bắt đầu và trước transaction ghi. Không có luồng lấy phiên từ trình duyệt để làm cho kiểm thử live thành công. Test dùng dữ liệu tổng hợp và cổng HTTP mock; kết nối thật vẫn phải đến từ quy trình cấp kết nối hợp lệ của AMS.
+
+## OAuth Google Calendar Phase 7A
+
+Google OAuth không dùng để đăng nhập AMS. Bắt đầu kết nối cần session AMS và CSRF; callback phải quay về với cùng session. `state` ngẫu nhiên nằm trong Redis tối đa 10 phút, được tiêu thụ một lần và ràng buộc UUID user cùng version kết nối. PKCE S256 bảo vệ authorization code; callback không chuyển code/token sang frontend. Redirect kết quả chỉ có mã cố định, không chứa URL tùy ý. Chỉ yêu cầu scope `calendar.app.created`, không xin quyền đọc/sửa lịch chính.
+
+Refresh/access token mã hóa AES-256-GCM với khóa riêng ngoài source/database, nonce ngẫu nhiên và AAD gắn user/kết nối/phiên bản. API trạng thái không trả ciphertext, token, Google email hoặc calendar ID. `POST authorize/setup/disconnect` giữ CSRF; mọi truy vấn kết nối lọc theo UUID từ principal, không nhận user ID từ client. HTTP Google chỉ đi tới host cố định, có timeout và không theo redirect. Không log request/response OAuth hoặc Calendar. Ngắt kết nối xóa token local dù Google không xác nhận revoke; điều này được báo rõ, không gọi là đã thu hồi từ xa thành công. Chi tiết vận hành và giới hạn nằm ở [tài liệu kết nối](google-calendar-integration.md).
 
 ## Lịch tự động và lịch sử Phase 6B
 

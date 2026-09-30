@@ -122,6 +122,13 @@ Unique index phục vụ cả chống trùng và tra cứu theo owner/identity. 
 - V7: ánh xạ chương trình/môn/nhóm nguồn; revision chưa biết; nhóm bắt buộc/tự chọn và yêu cầu số môn.
 - V8: lượt đồng bộ, hàng đợi và index chống hai lượt active cùng user.
 - V9: chỉ mục phục vụ lịch sử có cursor, dọn run kết thúc và chọn kết nối đủ điều kiện tự đồng bộ; không thêm bảng.
+- V10: một kết nối Google Calendar cho mỗi user, token mã hóa và ID lịch phụ; không có bảng sự kiện.
+
+## Kết nối Google Calendar Phase 7A
+
+`google_calendar_connection` có UUID riêng và `user_id` unique/FK tới `app_user`; nó không dùng email Google hay email AMS làm khóa. Trạng thái chỉ nhận `DISCONNECTED`, `SETUP_REQUIRED`, `CONNECTED`, `RECONNECTION_REQUIRED`. `CONNECTED` bắt buộc có ID lịch phụ và thời điểm kết nối; `CONNECTED`/`SETUP_REQUIRED` bắt buộc có gói token mã hóa và hạn access token. Hai trạng thái còn lại bắt buộc xóa token/hạn, nhưng giữ ID lịch để có thể dùng lại khi kết nối lại. `version` không âm và được tăng khi cập nhật để phát hiện ghi đè đồng thời. Timestamp tạo/cập nhật bắt buộc, thời điểm cập nhật không được trước thời điểm tạo.
+
+`encrypted_tokens` là BYTEA chứa nonce và ciphertext AES-GCM, không phải JSON token dạng rõ. `encryption_key_version` giúp xác định khóa giải mã; hiện chỉ có phiên bản khóa đang cấu hình, chưa có quy trình xoay khóa tự động. `last_successful_access_at` được ghi khi lịch phụ được xác nhận sẵn sàng, không phải lần học vụ được đồng bộ. Unique trên user cũng phục vụ tra cứu trạng thái, không thêm index trùng. V10 không có migration dữ liệu cá nhân, không tạo lịch hay sự kiện ở Google. Test nâng cấp V9→V10 giữ nguyên các hàng `sync_run` cũ; schema sạch vẫn chạy Flyway và Hibernate validate.
 
 ## Lượt đồng bộ Phase 6A
 

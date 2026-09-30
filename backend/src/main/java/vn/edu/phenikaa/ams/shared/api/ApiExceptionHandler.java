@@ -12,9 +12,32 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.ResponseEntity;
 import vn.edu.phenikaa.ams.academic.application.AcademicSourceQueryException;
 import vn.edu.phenikaa.ams.sync.application.SyncCommandException;
+import vn.edu.phenikaa.ams.calendar.google.GoogleCalendarException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+
+    @ExceptionHandler(GoogleCalendarException.class)
+    ResponseEntity<ProblemDetail> handleGoogleCalendar(GoogleCalendarException exception) {
+        var status = switch (exception.code()) {
+            case GOOGLE_NOT_CONFIGURED, GOOGLE_UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
+            case GOOGLE_STATE_INVALID -> HttpStatus.BAD_REQUEST;
+            case GOOGLE_AUTH_DENIED -> HttpStatus.FORBIDDEN;
+            case GOOGLE_RECONNECTION_REQUIRED, GOOGLE_CALENDAR_SETUP_FAILED -> HttpStatus.CONFLICT;
+            case GOOGLE_TOKEN_EXCHANGE_FAILED -> HttpStatus.BAD_GATEWAY;
+        };
+        var detail = switch (exception.code()) {
+            case GOOGLE_NOT_CONFIGURED -> "Kết nối Google Calendar chưa được cấu hình.";
+            case GOOGLE_STATE_INVALID -> "Yêu cầu kết nối đã hết hạn hoặc không hợp lệ.";
+            case GOOGLE_AUTH_DENIED -> "Quyền truy cập Google Calendar chưa được cấp.";
+            case GOOGLE_RECONNECTION_REQUIRED -> "Cần kết nối lại Google Calendar.";
+            case GOOGLE_CALENDAR_SETUP_FAILED -> "Chưa thể hoàn tất lịch riêng của AMS.";
+            case GOOGLE_TOKEN_EXCHANGE_FAILED, GOOGLE_UNAVAILABLE -> "Google Calendar tạm thời không sẵn sàng.";
+        };
+        var problem = ProblemDetail.forStatusAndDetail(status, detail);
+        problem.setProperty("code", exception.code().name());
+        return ResponseEntity.status(status).body(problem);
+    }
 
     @ExceptionHandler(SyncCommandException.class)
     ResponseEntity<ProblemDetail> handleSync(SyncCommandException exception) {

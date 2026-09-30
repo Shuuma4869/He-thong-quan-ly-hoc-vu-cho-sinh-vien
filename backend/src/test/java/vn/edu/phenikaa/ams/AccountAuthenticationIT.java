@@ -39,6 +39,20 @@ class AccountAuthenticationIT {
     @Autowired private SessionRepository<? extends Session> sessions;
 
     @Test
+    void disabledGoogleCalendarFeatureNeedsNoCredentialsAndExposesNoConnection() throws Exception {
+        var browser = new Browser();
+        assertThat(browser.get("/api/me/connections/google-calendar").statusCode()).isEqualTo(401);
+        String email = email();
+        assertThat(browser.register(email).statusCode()).isEqualTo(201);
+        assertThat(browser.login(email, PASSWORD).statusCode()).isEqualTo(204);
+        var status = JSON.readTree(browser.get("/api/me/connections/google-calendar").body());
+        assertThat(status.get("available").asBoolean()).isFalse();
+        assertThat(status.get("status").asText()).isEqualTo("DISCONNECTED");
+        assertThat(browser.postJson("/api/me/connections/google-calendar/authorize", Map.of()).statusCode())
+                .isEqualTo(503);
+    }
+
+    @Test
     void registrationNormalizesEmailHashesPasswordAndCreatesStudentSettings() throws Exception {
         var browser = new Browser();
         String email = email().toUpperCase();
