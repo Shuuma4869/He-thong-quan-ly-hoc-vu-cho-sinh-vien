@@ -32,8 +32,9 @@ public class PhenikaaConfiguration {
 
     @Bean
     vn.edu.phenikaa.ams.academic.application.CurriculumImportService curriculumImportService(
-            PhenikaaAcademicPortalClient portal, StudentProfileRepository profiles, PhenikaaCurriculumStore store) {
-        return new vn.edu.phenikaa.ams.academic.application.CurriculumImportService(portal, profiles, store);
+            PhenikaaAcademicPortalClient portal, StudentProfileRepository profiles, PhenikaaCurriculumStore store,
+            org.springframework.transaction.PlatformTransactionManager transactions) {
+        return new vn.edu.phenikaa.ams.academic.application.CurriculumImportService(portal, profiles, store, transactions);
     }
     @Bean(destroyMethod = "close")
     PhenikaaSessionCipher phenikaaSessionCipher(@Value("${ams.phenikaa.session-key:}") String key,
@@ -62,7 +63,8 @@ public class PhenikaaConfiguration {
     }
 
     @Bean
-    ProfileImportService profileImportService(PhenikaaAcademicPortalClient portal, StudentProfileRepository profiles) {
-        return new ProfileImportService(portal, profiles);
+    ProfileImportService profileImportService(PhenikaaAcademicPortalClient portal, StudentProfileRepository profiles,
+                                             org.springframework.transaction.PlatformTransactionManager transactions) {
+        return new ProfileImportService(portal, profiles, transactions);
     }
 }

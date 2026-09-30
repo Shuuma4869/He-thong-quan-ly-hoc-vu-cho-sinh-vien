@@ -41,7 +41,10 @@ public interface AcademicPortalClient {
         public StudentConnectionId { Objects.requireNonNull(value); }
     }
 
-    record ConnectionInfo(State state, Instant lastSuccessfulAccessAt) {
+    record ConnectionInfo(State state, Instant lastSuccessfulAccessAt, Instant authenticatedAt) {
+        public ConnectionInfo(State state, Instant lastSuccessfulAccessAt) {
+            this(state, lastSuccessfulAccessAt, null);
+        }
         public enum State { NOT_CONNECTED, CONNECTED, RECONNECTION_REQUIRED, DISCONNECTED }
     }
 }

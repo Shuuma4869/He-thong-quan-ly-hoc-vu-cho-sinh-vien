@@ -157,12 +157,12 @@ class CurriculumImportIT {
         assertThat(ids("curriculum")).containsExactly(id); assertThat(count("course")).isEqualTo(3);
         assertThat(portal.status(user).reconnectionRequired()).isEqualTo(code == PhenikaaClientException.Code.SESSION_EXPIRED);
     }
-    @Test void creditConflictRollsBackMetadataAndKeepsExistingCourseValues() {
+    @Test void creditConflictRollsBackCatalogButKeepsSuccessfulSourceReadMetadata() {
         imports.importCurriculum(user, option); var success = portal.status(user).lastSuccessfulAccessAt();
         when(http.fetchCurriculum(any(), any())).thenReturn(observation(option, "Tên không được lưu", new BigDecimal("4")));
         assertThatThrownBy(() -> imports.importCurriculum(user, option)).hasMessage("CREDIT_CONFLICT");
         assertThat(jdbc.queryForList("select credits from course where profile_id = ?", BigDecimal.class, profile)).allMatch(c -> c.compareTo(new BigDecimal("3")) == 0);
-        assertThat(portal.status(user).lastSuccessfulAccessAt()).isEqualTo(success);
+        assertThat(portal.status(user).lastSuccessfulAccessAt()).isAfter(success);
     }
     @Test void sameCodeDifferentSourceIdDoesNotMergeAndRollsBackEarlierUpdates() {
         imports.importCurriculum(user, option);

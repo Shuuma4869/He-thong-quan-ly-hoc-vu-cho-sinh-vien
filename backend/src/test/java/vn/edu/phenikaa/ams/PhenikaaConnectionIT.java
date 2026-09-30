@@ -343,13 +343,13 @@ class PhenikaaConnectionIT {
         assertThat(profiles.findById(profile)).isPresent();
     }
 
-    @Test void databaseWriteFailureRollsBackImportAndSuccessMetadata() {
+    @Test void databaseWriteFailureRollsBackProfileButKeepsSuccessfulSourceReadMetadata() {
         var connection = connect();
         var previous = portal.status(owner.getId()).lastSuccessfulAccessAt();
         doThrow(new DataIntegrityViolationException("synthetic database failure")).when(profiles).save(any(StudentProfile.class));
         assertThatThrownBy(() -> imports.importCurrentProfile(owner.getId())).isInstanceOf(DataIntegrityViolationException.class);
         assertThat(profiles.findByUserId(owner.getId())).isEmpty();
-        assertThat(portal.status(owner.getId()).lastSuccessfulAccessAt()).isEqualTo(previous);
+        assertThat(portal.status(owner.getId()).lastSuccessfulAccessAt()).isAfter(previous);
         assertThat(portal.currentConnection(owner.getId())).isEqualTo(connection);
     }
 
