@@ -8,10 +8,11 @@ import { Button } from "@/components/ui/button";
 import { saveSettings } from "../api";
 import { settingsSchema, type CurrentUser, type Settings } from "../schema";
 import { currentUserKey } from "./auth-boundary";
+import { GoogleCalendarCard } from "@/features/google-calendar/google-calendar-card";
 
 const inputStyle = "mt-1.5 h-11 w-full rounded-lg border bg-background px-3";
 
-export function SettingsForm({ user }: { user: CurrentUser }) {
+export function SettingsForm({ user, googleResult }: { user: CurrentUser; googleResult?: string }) {
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
   const queryClient = useQueryClient();
@@ -38,5 +39,6 @@ export function SettingsForm({ user }: { user: CurrentUser }) {
       {message && <p role="status" className="text-sm text-primary">{message}</p>}{error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Đang lưu…" : "Lưu cài đặt"}</Button>
     </form>
+    <GoogleCalendarCard callbackResult={googleResult} />
   </section>;
 }

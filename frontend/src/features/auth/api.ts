@@ -5,7 +5,7 @@ export class ApiError extends Error {
   constructor(public readonly status: number, message: string) { super(message); }
 }
 
-async function checkResponse(response: Response) {
+export async function checkResponse(response: Response) {
   if (response.ok) return response;
   const fallback = response.status === 403 ? "Phiên thao tác đã hết hạn. Vui lòng thử lại." : "Không thể hoàn thành yêu cầu. Vui lòng thử lại.";
   const problem = await response.json().catch(() => null);
