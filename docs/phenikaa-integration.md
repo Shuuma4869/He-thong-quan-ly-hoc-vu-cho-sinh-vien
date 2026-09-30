@@ -1404,3 +1404,9 @@ Phần **đã lưu** vẫn là hồ sơ người học, chương trình/danh m�
 Test tự động dùng user, điểm và phiên giả định. Test service/API kiểm tra ownership, reference, `UNKNOWN`, lỗi an toàn và dữ liệu rỗng. Integration test dùng PostgreSQL/Redis thật để kiểm tra đường HTTP có xác thực, cooldown, hết phiên và không tạo hàng học vụ. CI không gọi Phenikaa. Việc đọc live qua endpoint mới cần một kết nối AMS đã được cấp hợp lệ cho chính tài khoản; nếu chưa có, không báo test tổng hợp là live verify.
 
 Hướng Phase 6A **chỉ đề xuất**: trạng thái/lượt đồng bộ, worker và khóa cho các dữ liệu đã có thể nhập như hồ sơ/chương trình. Không thiết kế phát hiện thay đổi điểm, buổi học hay kỳ thi dựa trên identity còn chưa xác minh. Không bắt đầu Phase 6 hoặc một Phase 5F tiếp tục đoán khóa lần học.
+
+## Phase 6A: làm mới phần dữ liệu đã có thể lưu
+
+Phase 6A triển khai hạ tầng được đề xuất ở cuối 5E: lượt đồng bộ bền vững, worker và khóa theo user. Worker chỉ gọi importer hồ sơ và chương trình/danh mục đã có; API kết quả học tập vẫn đọc trực tiếp, lịch/thi vẫn chưa vào pipeline. Không có job ghi `StudentCourse`, `AcademicResult`, `ClassSession` hoặc `Exam`, cũng không tạo snapshot/chênh lệch từ các observation này.
+
+Hai importer nay đọc nguồn ngoài transaction ghi, rồi kiểm tra lại tài khoản, kết nối và thế hệ phiên trước khi lưu. Nếu nguồn trả lỗi, dữ liệu đã lưu không bị xóa. Nếu đọc nguồn thành công nhưng bước ghi thất bại, `lastSuccessfulAccessAt` vẫn phản ánh lần đọc nguồn; trạng thái `sync_run` mới là nơi thể hiện kết quả toàn lượt. Điều này tránh hiểu nhầm metadata kết nối là bằng chứng import thành công. [Thiết kế worker, retry và trạng thái](architecture-overview.md#hạ-tầng-đồng-bộ-phase-6a) có chi tiết.

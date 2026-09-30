@@ -11,9 +11,31 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.ResponseEntity;
 import vn.edu.phenikaa.ams.academic.application.AcademicSourceQueryException;
+import vn.edu.phenikaa.ams.sync.application.SyncCommandException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+
+    @ExceptionHandler(SyncCommandException.class)
+    ResponseEntity<ProblemDetail> handleSync(SyncCommandException exception) {
+        var status = switch (exception.code()) {
+            case CONNECTION_NOT_FOUND, RECONNECTION_REQUIRED -> HttpStatus.CONFLICT;
+            case RATE_LIMITED -> HttpStatus.TOO_MANY_REQUESTS;
+            case RUN_NOT_FOUND -> HttpStatus.NOT_FOUND;
+            case ACCOUNT_UNAVAILABLE -> HttpStatus.FORBIDDEN;
+            case QUEUE_UNAVAILABLE -> HttpStatus.SERVICE_UNAVAILABLE;
+        };
+        var problem = ProblemDetail.forStatusAndDetail(status, switch (exception.code()) {
+            case CONNECTION_NOT_FOUND -> "Chưa có kết nối học vụ có thể sử dụng.";
+            case RECONNECTION_REQUIRED -> "Phiên học vụ đã hết hạn; cần kết nối lại.";
+            case RATE_LIMITED -> "Vui lòng chờ trước khi yêu cầu đồng bộ tiếp.";
+            case RUN_NOT_FOUND -> "Không tìm thấy lượt đồng bộ của tài khoản này.";
+            case ACCOUNT_UNAVAILABLE -> "Tài khoản hiện không thể đồng bộ.";
+            case QUEUE_UNAVAILABLE -> "Hàng đợi đồng bộ tạm thời không sẵn sàng.";
+        });
+        problem.setProperty("code", exception.code().name());
+        return ResponseEntity.status(status).body(problem);
+    }
 
     @ExceptionHandler(AcademicSourceQueryException.class)
     ResponseEntity<ProblemDetail> handleAcademicSource(AcademicSourceQueryException exception) {

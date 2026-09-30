@@ -48,6 +48,14 @@ Integration test dùng HTTP thật, PostgreSQL và Redis riêng để kiểm tra
 
 Email tài khoản và email nhận thông báo chưa được xác minh; không có nhãn xác minh giả, password reset hoặc email provider. Locale chỉ lưu lựa chọn, chưa đổi toàn bộ ngôn ngữ giao diện. Phase 2 có model chính sách điểm nhưng chưa tính GPA/xếp loại.
 
-Học vụ được phân vùng theo StudentProfile liên kết với user. FK ghép chặn liên kết chéo hồ sơ, nhưng không thay thế authorization: use case học vụ sau này phải tìm hồ sơ từ user trong session và scope mọi truy vấn theo hồ sơ đó. Hiện chưa có API học vụ. Snapshot metadata và change chỉ lưu dữ liệu chuẩn hóa, không lưu raw credential/session hoặc response nguồn.
+Học vụ được phân vùng theo StudentProfile liên kết với user. FK ghép chặn liên kết chéo hồ sơ, nhưng không thay thế authorization: API đọc học vụ và đồng bộ lấy user từ session rồi kiểm tra ownership ở backend. Chưa có API CRUD học vụ. Snapshot metadata và change chỉ lưu dữ liệu chuẩn hóa, không lưu raw credential/session hoặc response nguồn.
 
 Chưa có rate limiting đăng ký/đăng nhập, MFA, absolute session timeout hay quy trình quản trị/recovery. Bảng audit hiện mới là schema nền, chưa ghi sự kiện. OAuth và mã hóa token tích hợp chưa triển khai vì chưa có kết nối ngoài. Cần bổ sung và đánh giá các biện pháp bảo vệ phù hợp trước khi mở đăng ký trên internet; test Phase 1 không thay thế đánh giá bảo mật production.
+
+## Yêu cầu đồng bộ Phase 6A
+
+`POST /api/me/sync` vẫn chịu CSRF của Spring Security. User ID lấy từ principal, không có tham số chọn tài khoản khác; `GET /api/me/sync/runs/{runId}` chỉ tìm trong lịch sử của chính user. Một lượt đang chờ/chạy được dùng lại khi bấm nhiều lần, và yêu cầu mới có cooldown theo UUID user trong Redis.
+
+Hàng `sync_run` chỉ có UUID nội bộ, trạng thái, thời điểm, số attempt và mã lỗi cố định. Worker nạp kết nối/phiên từ server khi thực hiện, không nhận URL tùy ý, không ghi cookie, token, ID người học hoặc response nguồn vào job/log. Khóa Redis dùng UUID user và token ngẫu nhiên; chỉ chủ khóa mới gia hạn hoặc nhả khóa. Metrics chỉ có tag trạng thái/mã lỗi, không có user ID. API trạng thái không mở thêm Actuator endpoint.
+
+Việc mất quyền, ngắt kết nối hoặc hết phiên được kiểm tra lại khi worker bắt đầu và trước transaction ghi. Không có luồng lấy phiên từ trình duyệt để làm cho kiểm thử live thành công. Test dùng dữ liệu tổng hợp và cổng HTTP mock; kết nối thật vẫn phải đến từ quy trình cấp kết nối hợp lệ của AMS.

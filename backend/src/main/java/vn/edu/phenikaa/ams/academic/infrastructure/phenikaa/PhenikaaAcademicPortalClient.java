@@ -73,12 +73,13 @@ public class PhenikaaAcademicPortalClient implements AcademicPortalClient {
                     case CONNECTED -> ConnectionInfo.State.CONNECTED;
                     case RECONNECTION_REQUIRED -> ConnectionInfo.State.RECONNECTION_REQUIRED;
                     case DISCONNECTED -> ConnectionInfo.State.DISCONNECTED;
-                }, connection.view().lastSuccessfulAccessAt()))
-                .orElseGet(() -> new ConnectionInfo(ConnectionInfo.State.NOT_CONNECTED, null));
+                }, connection.view().lastSuccessfulAccessAt(), connection.authenticatedAt()))
+                .orElseGet(() -> new ConnectionInfo(ConnectionInfo.State.NOT_CONNECTED, null, null));
     }
 
-    @Override public ProfileObservation fetchProfile(UUID currentUserId, StudentConnectionId connectionId) {
-        return access(currentUserId, connectionId, material -> http.fetchProfile(material.profile()));
+    @Override @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ProfileObservation fetchProfile(UUID currentUserId, StudentConnectionId connectionId) {
+        return accessRead(currentUserId, connectionId, material -> http.fetchProfile(material.profile()));
     }
 
     @Override public ScheduleObservation fetchSchedule(UUID currentUserId, StudentConnectionId connectionId,
@@ -86,12 +87,14 @@ public class PhenikaaAcademicPortalClient implements AcademicPortalClient {
         return access(currentUserId, connectionId, material -> http.fetchSchedule(material.schedule(), from, through));
     }
 
-    @Override public List<CurriculumOption> fetchCurricula(UUID user, StudentConnectionId connection) {
-        return access(user, connection, material -> http.fetchCurricula(curriculumSession(material)));
+    @Override @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public List<CurriculumOption> fetchCurricula(UUID user, StudentConnectionId connection) {
+        return accessRead(user, connection, material -> http.fetchCurricula(curriculumSession(material)));
     }
 
-    @Override public CurriculumObservation fetchCurriculum(UUID user, StudentConnectionId connection, CurriculumOption curriculum) {
-        return access(user, connection, material -> http.fetchCurriculum(curriculumSession(material), curriculum));
+    @Override @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public CurriculumObservation fetchCurriculum(UUID user, StudentConnectionId connection, CurriculumOption curriculum) {
+        return accessRead(user, connection, material -> http.fetchCurriculum(curriculumSession(material), curriculum));
     }
 
     @Override public CourseRelationObservation fetchCourseRelations(UUID user, StudentConnectionId connection,

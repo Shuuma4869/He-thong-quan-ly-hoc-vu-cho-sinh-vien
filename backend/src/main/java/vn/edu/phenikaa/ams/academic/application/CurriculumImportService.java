@@ -1,27 +1,56 @@
 package vn.edu.phenikaa.ams.academic.application;
 
 import java.util.UUID;
-import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
 import vn.edu.phenikaa.ams.academic.application.port.*;
 import vn.edu.phenikaa.ams.academic.infrastructure.StudentProfileRepository;
 import vn.edu.phenikaa.ams.academic.infrastructure.phenikaa.PhenikaaCurriculumStore;
+import static vn.edu.phenikaa.ams.academic.application.port.AcademicPortalException.Code.CONNECTION_UNAVAILABLE;
 
 public class CurriculumImportService {
     private final AcademicPortalClient portal;
     private final StudentProfileRepository profiles;
     private final PhenikaaCurriculumStore store;
-    public CurriculumImportService(AcademicPortalClient portal, StudentProfileRepository profiles, PhenikaaCurriculumStore store) {
+    private final TransactionTemplate writes;
+    public CurriculumImportService(AcademicPortalClient portal, StudentProfileRepository profiles,
+                                   PhenikaaCurriculumStore store, PlatformTransactionManager transactions) {
         this.portal = portal; this.profiles = profiles; this.store = store;
+        this.writes = new TransactionTemplate(transactions);
     }
 
-    @Transactional(noRollbackFor = AcademicPortalException.class)
     public UUID importCurriculum(UUID currentUserId, CurriculumOption curriculum) {
-        // Retains the existing per-user database lock until this transaction commits.
+        return importCurriculum(currentUserId, curriculum, () -> {});
+    }
+
+    public UUID importCurriculum(UUID currentUserId, CurriculumOption curriculum, Runnable beforeWrite) {
         var connection = portal.currentConnection(currentUserId);
-        var profile = profiles.findByUserId(currentUserId)
-                .orElseThrow(() -> new CurriculumImportException(CurriculumImportException.Code.PROFILE_REQUIRED));
+        var generation = portal.connectionInfo(currentUserId).authenticatedAt();
+        if (profiles.findByUserId(currentUserId).isEmpty())
+            throw new CurriculumImportException(CurriculumImportException.Code.PROFILE_REQUIRED);
         var observation = portal.fetchCurriculum(currentUserId, connection, curriculum);
-        // An available curriculum is not necessarily the user's active/current curriculum.
-        return store.upsert(profile.getId(), observation);
+        return writes.execute(status -> {
+            var owned = portal.currentConnection(currentUserId);
+            var current = portal.connectionInfo(currentUserId);
+            if (!owned.equals(connection)
+                    || current.state() != AcademicPortalClient.ConnectionInfo.State.CONNECTED
+                    || !java.util.Objects.equals(current.authenticatedAt(), generation))
+                throw new AcademicPortalException(CONNECTION_UNAVAILABLE);
+            beforeWrite.run();
+            var profile = profiles.findByUserId(currentUserId)
+                    .orElseThrow(() -> new CurriculumImportException(CurriculumImportException.Code.PROFILE_REQUIRED));
+            return store.upsert(profile.getId(), observation);
+        });
+    }
+
+    public int refreshAvailableCurricula(UUID currentUserId, Runnable beforeWrite) {
+        var connection = portal.currentConnection(currentUserId);
+        if (profiles.findByUserId(currentUserId).isEmpty())
+            throw new CurriculumImportException(CurriculumImportException.Code.PROFILE_REQUIRED);
+        var options = portal.fetchCurricula(currentUserId, connection);
+        if (options.isEmpty() || options.size() > 8)
+            throw new CurriculumImportException(CurriculumImportException.Code.INVALID_OBSERVATION);
+        for (var option : options) importCurriculum(currentUserId, option, beforeWrite);
+        return options.size();
     }
 }
