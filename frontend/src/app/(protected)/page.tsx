@@ -2,6 +2,6 @@ import { DashboardOverview } from "@/features/dashboard/components/dashboard-ove
 import { requireCurrentUser } from "@/features/auth/server";
 
 export default async function Home() {
-  await requireCurrentUser();
-  return <DashboardOverview />;
+  const user = await requireCurrentUser();
+  return <DashboardOverview userId={user.id} />;
 }

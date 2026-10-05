@@ -39,6 +39,6 @@ export function SettingsForm({ user, googleResult }: { user: CurrentUser; google
       {message && <p role="status" className="text-sm text-primary">{message}</p>}{error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Đang lưu…" : "Lưu cài đặt"}</Button>
     </form>
-    <GoogleCalendarCard callbackResult={googleResult} />
+    <GoogleCalendarCard callbackResult={googleResult} userId={user.id} />
   </section>;
 }

@@ -6,9 +6,11 @@ AMS hỗ trợ sinh viên theo dõi kết quả học tập, chương trình đ�
 
 AMS là dự án cá nhân, không phải hệ thống chính thức của Phenikaa University và không đại diện cho nhà trường. Các tích hợp chỉ làm việc với dữ liệu mà tài khoản người dùng được phép truy cập.
 
-> Đã có tài khoản AMS, đăng nhập bằng session, cài đặt cá nhân và domain/database học vụ. Chương trình đào tạo, danh mục môn và nhóm môn đã được nhập trong phạm vi xác minh; kết quả học tập và chi tiết có API chỉ đọc. Hạ tầng đồng bộ làm mới **chỉ hồ sơ và phần chương trình/danh mục đã được phép lưu**. Phase 6B thêm chính sách tự xếp hàng (mặc định tắt), lịch sử có phân trang và dọn lịch sử cũ. **Chưa lưu lần học hoặc kết quả học tập** vì chưa đủ căn cứ chọn kết quả hiện hành và xác định tín chỉ/GPA cho từng lần học. Chưa lưu lịch/thi, tiên quyết hoặc tự chọn chương trình hiện tại. Chưa có giao diện kết nối Phenikaa; tính năng backend mặc định tắt. Phase 7A thêm nền kết nối Google Calendar và tạo lịch riêng, cũng tắt mặc định; **chưa tạo sự kiện** hoặc xác minh với tài khoản Google thật. Email chưa kết nối; dashboard vẫn là giao diện nền. Xem [ranh giới đọc dữ liệu Phase 5E](docs/phenikaa-integration.md#phase-5e-api-đọc-trực-tiếp-và-ranh-giới-nguồn), [vận hành đồng bộ Phase 6B](docs/architecture-overview.md#vận-hành-đồng-bộ-phase-6b) và [kết nối Google Calendar](docs/google-calendar-integration.md).
+> Đã có tài khoản AMS, đăng nhập bằng session, cài đặt cá nhân và domain/database học vụ. Chương trình đào tạo, danh mục môn và nhóm môn đã được nhập trong phạm vi xác minh; kết quả học tập và chi tiết có API chỉ đọc. Hạ tầng đồng bộ làm mới **chỉ hồ sơ và phần chương trình/danh mục đã được phép lưu**. Phase 6B thêm chính sách tự xếp hàng (mặc định tắt), lịch sử có phân trang và dọn lịch sử cũ. **Chưa lưu lần học hoặc kết quả học tập** vì chưa đủ căn cứ chọn kết quả hiện hành và xác định tín chỉ/GPA cho từng lần học. Chưa lưu lịch/thi, tiên quyết hoặc tự chọn chương trình hiện tại. Chưa có giao diện kết nối Phenikaa; tính năng backend mặc định tắt. Phase 7A thêm nền kết nối Google Calendar và tạo lịch riêng, cũng tắt mặc định; **chưa tạo sự kiện** hoặc xác minh với tài khoản Google thật. Email chưa kết nối. Dashboard hiện hiển thị trạng thái thực tế từ API, không còn giả lập GPA, tín chỉ hay lịch. Xem [ranh giới đọc dữ liệu Phase 5E](docs/phenikaa-integration.md#phase-5e-api-đọc-trực-tiếp-và-ranh-giới-nguồn), [vận hành đồng bộ Phase 6B](docs/architecture-overview.md#vận-hành-đồng-bộ-phase-6b) và [kết nối Google Calendar](docs/google-calendar-integration.md).
 
 Phase 9A có màn hình **Chương trình** tại `/curriculum` để đọc chương trình, nhóm môn và danh mục môn từ PostgreSQL AMS. Màn hình dùng dữ liệu đã lưu, không gọi Phenikaa và không tự đồng bộ khi mở trang. Môn chưa có liên kết chương trình vẫn xem được trong tab **Danh mục môn**, không bị gán thành môn tự chọn. [Hướng dẫn đọc dữ liệu và API](docs/curriculum-catalog.md) giải thích các giá trị chưa xác định và cách phân trang.
+
+Dashboard đọc riêng trạng thái kết nối Phenikaa, Google Calendar, lượt đồng bộ gần nhất và việc đã có chương trình lưu hay chưa. Nếu một API lỗi, các phần còn lại vẫn hiển thị. Trang **Đồng bộ** tại `/sync` chỉ cho gửi yêu cầu khi backend báo kết nối Phenikaa đang dùng được. Trang theo dõi lượt đang chạy, giải thích lỗi bằng thông báo an toàn và tải lịch sử từng trang. Khi server chưa bật tích hợp Phenikaa, nút đồng bộ bị khóa; đây không phải dấu hiệu tài khoản đã ngắt kết nối. [Chi tiết về giao diện và giới hạn](docs/architecture-overview.md#giao-diện-tổng-quan-và-đồng-bộ).
 
 ## Phạm vi hướng tới
 
@@ -16,7 +18,7 @@ Phase 9A có màn hình **Chương trình** tại `/curriculum` để đọc ch�
 - Đồng bộ học vụ qua `AcademicPortalClient`, với Phenikaa là adapter đầu tiên.
 - Change Detection Engine lưu snapshot và phân loại thay đổi lịch học, lịch thi.
 - Calendar, curriculum, course catalog, GPA calculator và semester/graduation planner.
-- Google Calendar OAuth, email notification, retry, deduplication và Sync Center.
+- Google Calendar OAuth, email notification, retry và deduplication.
 - Bảo mật theo defense in depth, OWASP ASVS và nguyên tắc quyền tối thiểu.
 
 ## Công nghệ
@@ -67,6 +69,8 @@ pnpm dev
 Mở `/register` để tạo tài khoản sinh viên, sau đó đăng nhập tại `/login`. Không có tài khoản admin mặc định. `/settings` lưu email nhận thông báo, múi giờ, ngôn ngữ ưu tiên và giao diện; email chưa được xác minh và chưa dùng để gửi thông báo.
 
 Sau khi đăng nhập, chọn **Chương trình** ở thanh điều hướng. Tài khoản mới có thể thấy danh sách rỗng vì đăng ký AMS không tự tạo hồ sơ học vụ. Dữ liệu chương trình đã nhập vẫn đọc được khi tắt tích hợp Phenikaa hoặc phiên cổng trường hết hạn. Trang không chọn chương trình hiện hành cho hồ sơ, không hiển thị tiến độ học, điểm hoặc điều kiện đăng ký môn.
+
+Chọn **Đồng bộ** để xem lượt gần nhất và lịch sử. Nút **Đồng bộ ngay** chỉ dùng được khi AMS đã có kết nối Phenikaa hợp lệ do backend cấp. Nút này xếp một lượt vào hàng đợi, không đồng nghĩa dữ liệu đã cập nhật xong. Nếu lượt hoàn tất một phần, xem trạng thái riêng của hồ sơ và chương trình/danh mục; dữ liệu nguồn chưa đầy đủ không phải ý nghĩa của trạng thái này.
 
 Phần Phenikaa không tự kết nối khi chạy local. Không cần điền khóa để dùng tài khoản AMS. Nếu phát triển luồng nhập hồ sơ, đọc trước [cấu hình khóa, giới hạn cấp phiên và kết quả Phase 4B](docs/phenikaa-integration.md#phase-4b-kết-nối-mã-hóa-và-nhập-hồ-sơ); không sao chép token từ DevTools vào source hoặc `.env.example`.
 
