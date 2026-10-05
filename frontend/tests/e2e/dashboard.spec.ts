@@ -13,6 +13,15 @@ test("hiển thị dashboard AMS", async ({ page }) => {
     await expect(page.getByText(placeholder)).toHaveCount(0);
 });
 
+test("không coi 404 của sync/current là chưa có lượt khi Phenikaa bị tắt", async ({ page }) => {
+  await page.route("**/api/me/connections/phenikaa", (route) => route.fulfill({ status: 404 }));
+  await page.route("**/api/me/sync/current", (route) => route.fulfill({ status: 404 }));
+  await page.goto("/");
+  await expect(page.getByText("Không khả dụng: tích hợp Phenikaa chưa được bật.")).toBeVisible();
+  await expect(page.getByText("Đồng bộ không khả dụng khi tích hợp Phenikaa chưa được bật.")).toBeVisible();
+  await expect(page.getByText("Chưa có lượt đồng bộ được ghi nhận.")).toHaveCount(0);
+});
+
 test("một API lỗi không che các trạng thái còn lại", async ({ page }) => {
   await page.route("**/api/me/connections/google-calendar", (route) => route.abort());
   await page.goto("/");

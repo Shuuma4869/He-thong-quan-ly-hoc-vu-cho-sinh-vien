@@ -20,6 +20,7 @@ export function DashboardOverview({ userId }: { userId: string }) {
   const google = useQuery({ queryKey: ["google-calendar-connection", userId], queryFn: ({ signal }) => getGoogleConnection(signal), retry: false });
   const current = useQuery({ queryKey: syncKeys.current(userId), queryFn: ({ signal }) => getCurrentRun(signal), retry: false });
   const curricula = useQuery({ queryKey: ["curricula", userId, "availability"], queryFn: ({ signal }) => getCurricula(undefined, signal), retry: false, staleTime: 0 });
+  const sourceDisabled = phenikaa.isSuccess && phenikaa.data === null;
 
   return <div className="space-y-8">
     <header className="space-y-2"><p className="text-sm font-medium text-primary">Tổng quan học vụ</p>
@@ -36,6 +37,9 @@ export function DashboardOverview({ userId }: { userId: string }) {
       </article>
       <article className={card}><h2 className="font-semibold">Lượt đồng bộ gần nhất</h2>
         {current.isPending ? <p>Đang đọc lượt đồng bộ…</p> : current.isError ? <><p role="alert">{readError(current.error, "Chưa thể đọc lượt đồng bộ.")}</p><Retry retry={() => void current.refetch()} /></>
+          : sourceDisabled ? <p>Đồng bộ không khả dụng khi tích hợp Phenikaa chưa được bật.</p>
+          : !current.data && phenikaa.isPending ? <p>Đang kiểm tra nguồn học vụ…</p>
+          : !current.data && phenikaa.isError ? <p>Chưa thể xác định lượt đồng bộ khi chưa đọc được trạng thái nguồn.</p>
           : !current.data ? <p>Chưa có lượt đồng bộ được ghi nhận.</p>
           : <><p>{runStatus[current.data.status]}</p><p className="text-sm text-muted">Yêu cầu lúc {localTime(current.data.requestedAt)}</p></>}
         <Link href="/sync" className="inline-block text-sm font-medium text-primary underline">Xem lịch sử</Link>
