@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.Base64;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.Executors;
@@ -40,6 +41,7 @@ import vn.edu.phenikaa.ams.sync.infrastructure.SyncRunStore;
 import vn.edu.phenikaa.ams.user.domain.AppUser;
 import vn.edu.phenikaa.ams.user.infrastructure.UserRepository;
 import static org.assertj.core.api.Assertions.*;
+import static org.assertj.core.api.SoftAssertions.assertSoftly;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.user;
@@ -95,7 +97,11 @@ class SyncMaintenanceIT {
     }
 
     private SyncMaintenance maintenance(int autoBatch, int cleanupBatch) {
-        return new SyncMaintenance(runs, manager, Clock.fixed(now, ZoneOffset.UTC), metrics,
+        return maintenance(runs, autoBatch, cleanupBatch);
+    }
+
+    private SyncMaintenance maintenance(SyncRunStore store, int autoBatch, int cleanupBatch) {
+        return new SyncMaintenance(store, manager, Clock.fixed(now, ZoneOffset.UTC), metrics,
                 true, true, Duration.ofMinutes(5), Duration.ofDays(1), Duration.ofDays(1), autoBatch,
                 Duration.ofDays(90), Duration.ofHours(1), cleanupBatch);
     }
@@ -144,14 +150,59 @@ class SyncMaintenanceIT {
         var first = maintenance(1, 100);
         var second = maintenance(1, 100);
         try (var pool = Executors.newVirtualThreadPerTaskExecutor()) {
-            var gate = new CountDownLatch(1);
-            var a = pool.submit(() -> { gate.await(); return first.enqueueDue(); });
-            var b = pool.submit(() -> { gate.await(); return second.enqueueDue(); });
-            gate.countDown();
-            assertThat(a.get(10, TimeUnit.SECONDS) + b.get(10, TimeUnit.SECONDS)).isEqualTo(1);
+            for (int attempt = 0; attempt < 20; attempt++) {
+                int currentAttempt = attempt;
+                jdbc.update("delete from sync_run where user_id = ?", owner.getId());
+                double before = metrics.counter("sync.auto.enqueue.total", "result", "ENQUEUED").count();
+                var gate = new CountDownLatch(1);
+                var a = pool.submit(() -> { gate.await(); return first.enqueueDue(); });
+                var b = pool.submit(() -> { gate.await(); return second.enqueueDue(); });
+                gate.countDown();
+                int reported = a.get(10, TimeUnit.SECONDS) + b.get(10, TimeUnit.SECONDS);
+                int rows = jdbc.queryForObject("select count(*) from sync_run where user_id = ?",
+                        Integer.class, owner.getId());
+                int activeRows = jdbc.queryForObject("select count(*) from sync_run where user_id = ? "
+                        + "and status in ('QUEUED','RUNNING')", Integer.class, owner.getId());
+                var active = runs.active(owner.getId());
+                double recorded = metrics.counter("sync.auto.enqueue.total", "result", "ENQUEUED").count() - before;
+                assertSoftly(softly -> {
+                    softly.assertThat(reported).as("reported new runs, attempt %s", currentAttempt).isEqualTo(1);
+                    softly.assertThat(rows).as("stored runs, attempt %s", currentAttempt).isEqualTo(1);
+                    softly.assertThat(activeRows).as("active runs, attempt %s", currentAttempt).isEqualTo(1);
+                    softly.assertThat(active.map(SyncRun::trigger)).as("active run trigger, attempt %s", currentAttempt)
+                            .contains(SyncRun.Trigger.SCHEDULED);
+                    softly.assertThat(recorded).as("enqueue metric, attempt %s", currentAttempt).isEqualTo(1);
+                });
+            }
         }
-        assertThat(runs.active(owner.getId()).orElseThrow().trigger()).isEqualTo(SyncRun.Trigger.SCHEDULED);
-        assertThat(jdbc.queryForObject("select count(*) from sync_run where user_id = ?", Integer.class, owner.getId())).isEqualTo(1);
+    }
+
+    @Test void staleSelectionDoesNotCountAnExistingRun() {
+        var owner = account();
+        var staleStore = new SyncRunStore(jdbc) {
+            @Override public List<UUID> dueUsers(Instant ignored, long intervalSeconds,
+                                                  long failureCooldownSeconds, int limit) {
+                return List.of(owner.getId());
+            }
+        };
+        var scheduler = maintenance(staleStore, 1, 100);
+        double before = metrics.counter("sync.auto.enqueue.total", "result", "ENQUEUED").count();
+        int first = scheduler.enqueueDue();
+        int second = scheduler.enqueueDue();
+        int rows = jdbc.queryForObject("select count(*) from sync_run where user_id = ?",
+                Integer.class, owner.getId());
+        int activeRows = jdbc.queryForObject("select count(*) from sync_run where user_id = ? "
+                + "and status in ('QUEUED','RUNNING')", Integer.class, owner.getId());
+        double recorded = metrics.counter("sync.auto.enqueue.total", "result", "ENQUEUED").count() - before;
+        assertSoftly(softly -> {
+            softly.assertThat(first).isEqualTo(1);
+            softly.assertThat(second).isZero();
+            softly.assertThat(rows).isEqualTo(1);
+            softly.assertThat(activeRows).isEqualTo(1);
+            softly.assertThat(runs.active(owner.getId()).map(SyncRun::trigger))
+                    .contains(SyncRun.Trigger.SCHEDULED);
+            softly.assertThat(recorded).isEqualTo(1);
+        });
     }
 
     @Test void terminalFailureWaitsForCooldownAndManualCooldownIsSeparate() {
