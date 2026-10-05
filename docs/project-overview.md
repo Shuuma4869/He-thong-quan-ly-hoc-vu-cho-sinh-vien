@@ -16,4 +16,6 @@ Bootstrap thiết lập design system, API health, database migration, integrati
 
 Phase 2 bổ sung model và persistence cho hồ sơ sinh viên, học kỳ, môn học, chương trình/tiên quyết, lần học/kết quả, lớp mở/buổi học/kỳ thi, snapshot metadata, schedule change và grading policy theo phiên bản. Chi tiết quan hệ, constraint và giới hạn ở [mô hình database](database-model.md).
 
-Chưa triển khai kết nối Phenikaa, Google Calendar, gửi email, xác minh email hoặc đặt lại mật khẩu. Chưa có dữ liệu học vụ thực tế, engine tính điểm/xếp loại hoặc giao diện quản trị tài khoản. Các contract tích hợp chỉ là ranh giới kiến trúc, không phải kết nối đã hoạt động.
+Các phase tiếp theo đã thêm adapter Phenikaa, nhập hồ sơ/chương trình/danh mục môn trong phạm vi đã kiểm chứng và worker làm mới các phần đó. Kết quả học tập có API đọc trực tiếp nguồn nhưng chưa được lưu thành StudentCourse/AcademicResult. Lịch học, lịch thi và tiên quyết đầy đủ cũng chưa được nhập vì còn thiếu căn cứ về định danh/ngữ nghĩa.
+
+Phase 7A có nền kết nối Google Calendar và lịch phụ riêng; chưa đồng bộ sự kiện. Phase 9A thêm `/curriculum` để xem chương trình, nhóm và danh mục môn **đã lưu trong AMS**, không gọi cổng trường từ màn hình này. Chưa có engine tính điểm/xếp loại, giao diện quản trị tài khoản, gửi email, xác minh email hoặc đặt lại mật khẩu. [README](../README.md) và [hướng dẫn chương trình/danh mục](curriculum-catalog.md) mô tả cách dùng hiện tại.

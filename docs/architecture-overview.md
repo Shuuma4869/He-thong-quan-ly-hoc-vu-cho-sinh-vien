@@ -37,6 +37,20 @@ Migration V2 mở rộng `app_user` sẵn có và thêm `user_preferences` quan 
 
 ## Dữ liệu và thay đổi
 
+### Đường đọc chương trình và danh mục đã lưu (Phase 9A)
+
+`CurriculumController` nhận UUID tài khoản từ principal, không nhận user ID qua request. `CurriculumQueryService` kiểm tra tài khoản còn ACTIVE, tìm StudentProfile của tài khoản rồi gọi `CurriculumReadRepository`. Lớp repository dùng truy vấn SQL có tham số để chiếu các cột cần dùng sang DTO; không serialize entity hoặc gọi importer/adapter. API hoạt động cả khi tích hợp Phenikaa đang tắt.
+
+Mỗi truy vấn đều giới hạn theo profile. Chi tiết và môn của chương trình kiểm tra cả profile lẫn UUID chương trình; UUID của người khác và UUID không tồn tại đều trả 404. Không có hồ sơ thì danh sách rỗng, không tạo hồ sơ trong GET. Tài khoản bị vô hiệu hóa không dùng tiếp phiên cũ để đọc dữ liệu này.
+
+Một request chạy trong transaction chỉ đọc, mức REPEATABLE READ: metadata, số đếm và nhóm thấy cùng một phiên bản database trong request đó. Không có khóa ghi, HTTP ngoài, cập nhật mapping hoặc metadata đồng bộ. Các trang kế tiếp là request độc lập, không phải snapshot kéo dài; khi importer sửa dữ liệu giữa các trang, người dùng có thể đọc lại từ đầu.
+
+Danh sách có giới hạn mặc định 50, tối đa 100; lấy thêm một hàng để biết còn trang sau. Thứ tự mã rồi UUID tạo điểm tiếp tục ổn định, kể cả hai chương trình cùng mã. Số môn/nhóm được đếm trong SQL; nhóm lấy bằng một truy vấn theo chương trình, không phát sinh một truy vấn Java cho mỗi hàng. Môn nối nhóm trong cùng truy vấn; catalog dùng EXISTS để xác định có liên kết đã lưu, không nối sang bảng nguồn. Không lấy toàn bộ catalog rồi lọc trong bộ nhớ.
+
+Các unique index theo profile/mã và index membership hiện có đủ làm nền cho phạm vi này; không thêm V11 hoặc sửa V1–V10. Tìm chuỗi con trên tên/mã có thể cần quét các hàng trong một hồ sơ: giới hạn response không có nghĩa chi phí tìm kiếm luôn cố định. Nếu catalog tăng lớn, cần đo bằng EXPLAIN trước khi thêm index tìm kiếm, không thêm sẵn một hệ thống search riêng.
+
+Frontend `/curriculum` đi qua protected layout và `requireCurrentUser`. Feature dùng TanStack Query với khóa có user UUID, dữ liệu luôn stale khi mount và GET `no-store`. Tìm kiếm có debounce 300 ms, hủy request cũ qua AbortSignal, phân trang “Tải thêm”. Chọn chương trình chỉ thay trạng thái màn hình, không cập nhật StudentProfile. [Hợp đồng API và cách hiểu giao diện](curriculum-catalog.md) được ghi riêng để người sửa UI không phải suy nghĩa từ schema.
+
 Domain học vụ nằm trong `academic.domain`, change nằm trong `sync.domain`. Không có parser hoặc import adapter trong domain. Các tham chiếu dùng UUID nội bộ; catalog và kết quả được scope theo StudentProfile với composite FK chặn liên kết chéo hồ sơ. Đây là dữ liệu của từng user, chưa phải catalog toàn trường dùng chung.
 
 V3–V5 bổ sung persistence cho học vụ, grading policy, snapshot metadata và schedule change; Hibernate chỉ validate schema. Môn học, lớp mở theo học kỳ, buổi học và kỳ thi là các entity riêng. Buổi học giữ occurrence key không phụ thuộc giờ/phòng, có optimistic locking khi cập nhật. [ERD và các quyết định database](database-model.md) mô tả quan hệ, nullability và giới hạn.
