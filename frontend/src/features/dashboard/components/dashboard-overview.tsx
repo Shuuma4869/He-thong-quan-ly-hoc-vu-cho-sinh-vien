@@ -1,39 +1,59 @@
-import { BookOpenCheck, CalendarClock, GraduationCap, Trophy } from "lucide-react";
-import { MetricCard } from "./metric-card";
+"use client";
+
+import Link from "next/link";
+import { useQuery } from "@tanstack/react-query";
+import { Button } from "@/components/ui/button";
 import { ApiStatus } from "./api-status";
+import { getCurricula } from "@/features/curriculum/api";
+import { getGoogleConnection } from "@/features/google-calendar/api";
+import { getCurrentRun, getPhenikaaConnection, readError, syncKeys } from "@/features/sync/api";
+import { localTime, runStatus } from "@/features/sync/presentation";
 
-const metrics = [
-  { label: "GPA tích lũy", value: "—", note: "Chờ dữ liệu đồng bộ", icon: Trophy },
-  { label: "Tín chỉ hoàn thành", value: "— / —", note: "Chưa kết nối Phenikaa", icon: GraduationCap },
-  { label: "Môn bắt buộc còn thiếu", value: "—", note: "Sẽ tính từ chương trình đào tạo", icon: BookOpenCheck },
-  { label: "Kỳ thi sắp tới", value: "—", note: "Chờ dữ liệu lịch thi", icon: CalendarClock },
-];
+const card = "min-w-0 space-y-3 rounded-2xl border bg-card p-5 shadow-sm";
 
-const integrations = [
-  { name: "Phenikaa", description: "Nguồn dữ liệu học vụ", status: "Chưa kết nối" },
-  { name: "Google Calendar", description: "Lịch học và lịch thi", status: "Chưa kết nối" },
-  { name: "Email", description: "Thông báo thay đổi", status: "Chưa cấu hình" },
-];
+function Retry({ retry }: { retry: () => void }) {
+  return <Button variant="outline" size="sm" onClick={retry}>Thử lại</Button>;
+}
 
-export function DashboardOverview() {
-  return (
-    <div className="space-y-8">
-      <section className="flex flex-col gap-2 sm:flex-row sm:items-end sm:justify-between">
-        <div><p className="text-sm font-medium text-primary">Tổng quan học vụ</p><h1 className="mt-1 text-3xl font-semibold tracking-tight">Chào mừng đến với AMS</h1><p className="mt-2 max-w-2xl text-sm leading-6 text-muted">Theo dõi kết quả học tập, lịch học và tiến độ chương trình tại một nơi.</p><p className="mt-1 text-xs text-muted">Bản khởi đầu · Các tích hợp học vụ chưa khả dụng.</p></div>
-        <span className="w-fit rounded-full border bg-card px-3 py-1.5 text-xs text-muted">Lần đồng bộ cuối: chưa có</span>
-      </section>
-      <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4" aria-label="Chỉ số học vụ">{metrics.map((metric) => <MetricCard key={metric.label} {...metric} />)}</section>
-      <section className="grid gap-6 xl:grid-cols-[1.5fr_1fr]">
-        <article className="rounded-2xl border bg-card p-6 shadow-sm">
-          <div className="flex items-center justify-between"><div><h2 className="font-semibold">Lịch gần nhất</h2><p className="mt-1 text-sm text-muted">Lịch học và lịch thi sau khi đồng bộ</p></div><span className="rounded-lg bg-primary-soft px-2.5 py-1 text-xs font-medium text-primary">Tuần này</span></div>
-          <div className="mt-6 grid min-h-48 place-items-center rounded-xl border border-dashed bg-background/60 px-6 text-center"><div><CalendarClock className="mx-auto size-8 text-muted" /><p className="mt-3 text-sm font-medium">Chưa có sự kiện</p><p className="mt-1 text-xs text-muted">Lịch sẽ xuất hiện khi kết nối nguồn học vụ.</p></div></div>
-        </article>
-        <article className="rounded-2xl border bg-card p-6 shadow-sm">
-          <h2 className="font-semibold">Trạng thái kết nối</h2><p className="mt-1 text-sm text-muted">Tích hợp bên ngoài của tài khoản</p>
-          <div className="mt-5 space-y-3">{integrations.map((integration) => <div key={integration.name} className="flex items-center justify-between gap-4 rounded-xl border p-3.5"><div><p className="text-sm font-medium">{integration.name}</p><p className="mt-0.5 text-xs text-muted">{integration.description}</p></div><span className="whitespace-nowrap rounded-full bg-amber-500/10 px-2.5 py-1 text-[11px] font-medium text-amber-600 dark:text-amber-400">{integration.status}</span></div>)}</div>
-        </article>
-      </section>
-      <ApiStatus />
-    </div>
-  );
+export function DashboardOverview({ userId }: { userId: string }) {
+  const phenikaa = useQuery({ queryKey: syncKeys.phenikaa(userId), queryFn: ({ signal }) => getPhenikaaConnection(signal), retry: false });
+  const google = useQuery({ queryKey: ["google-calendar-connection", userId], queryFn: ({ signal }) => getGoogleConnection(signal), retry: false });
+  const current = useQuery({ queryKey: syncKeys.current(userId), queryFn: ({ signal }) => getCurrentRun(signal), retry: false });
+  const curricula = useQuery({ queryKey: ["curricula", userId, "availability"], queryFn: ({ signal }) => getCurricula(undefined, signal), retry: false, staleTime: 0 });
+
+  return <div className="space-y-8">
+    <header className="space-y-2"><p className="text-sm font-medium text-primary">Tổng quan học vụ</p>
+      <h1 className="text-3xl font-semibold tracking-tight">Chào mừng đến với AMS</h1>
+      <p className="max-w-2xl text-sm leading-6 text-muted">Trạng thái bên dưới được đọc từ tài khoản và dữ liệu AMS đã lưu. Trang này không truy cập trực tiếp cổng trường hoặc Google.</p>
+    </header>
+    <section className="grid gap-4 sm:grid-cols-2" aria-label="Trạng thái tài khoản và dữ liệu">
+      <article className={card}><h2 className="font-semibold">Nguồn học vụ Phenikaa</h2>
+        {phenikaa.isPending ? <p>Đang kiểm tra…</p> : phenikaa.isError ? <><p role="alert">{readError(phenikaa.error, "Chưa thể kiểm tra nguồn học vụ.")}</p><Retry retry={() => void phenikaa.refetch()} /></>
+          : !phenikaa.data ? <p>Không khả dụng: tích hợp Phenikaa chưa được bật.</p>
+          : <><p>{({ CONNECTED: "Đã kết nối", RECONNECTION_REQUIRED: "Cần kết nối lại", DISCONNECTED: "Chưa kết nối" })[phenikaa.data.status]}</p>
+            {phenikaa.data.lastSuccessfulAccessAt && <p className="text-sm text-muted">Truy cập thành công gần nhất: {localTime(phenikaa.data.lastSuccessfulAccessAt)}</p>}</>}
+        <Link href="/sync" className="inline-block text-sm font-medium text-primary underline">Mở Đồng bộ</Link>
+      </article>
+      <article className={card}><h2 className="font-semibold">Lượt đồng bộ gần nhất</h2>
+        {current.isPending ? <p>Đang đọc lượt đồng bộ…</p> : current.isError ? <><p role="alert">{readError(current.error, "Chưa thể đọc lượt đồng bộ.")}</p><Retry retry={() => void current.refetch()} /></>
+          : !current.data ? <p>Chưa có lượt đồng bộ được ghi nhận.</p>
+          : <><p>{runStatus[current.data.status]}</p><p className="text-sm text-muted">Yêu cầu lúc {localTime(current.data.requestedAt)}</p></>}
+        <Link href="/sync" className="inline-block text-sm font-medium text-primary underline">Xem lịch sử</Link>
+      </article>
+      <article className={card}><h2 className="font-semibold">Dữ liệu chương trình</h2>
+        {curricula.isPending ? <p>Đang đọc dữ liệu đã lưu…</p> : curricula.isError ? <><p role="alert">{readError(curricula.error, "Chưa thể đọc chương trình đã lưu.")}</p><Retry retry={() => void curricula.refetch()} /></>
+          : <p>{curricula.data.items.length ? "Dữ liệu chương trình đã có trong AMS." : "Chưa có chương trình được lưu."}</p>}
+        <Link href="/curriculum" className="inline-block text-sm font-medium text-primary underline">Xem Chương trình</Link>
+      </article>
+      <article className={card}><h2 className="font-semibold">Google Calendar</h2>
+        {google.isPending ? <p>Đang kiểm tra…</p> : google.isError ? <><p role="alert">{readError(google.error, "Chưa thể kiểm tra Google Calendar.")}</p><Retry retry={() => void google.refetch()} /></>
+          : !google.data.available ? <p>Chưa được cấu hình.</p>
+          : <><p>{({ CONNECTED: "Đã kết nối", SETUP_REQUIRED: "Cần hoàn tất thiết lập", RECONNECTION_REQUIRED: "Cần kết nối lại", DISCONNECTED: "Chưa kết nối" })[google.data.status]}</p>
+            <p className="text-sm text-muted">Lịch riêng AMS: {google.data.calendarReady ? "đã sẵn sàng" : "chưa sẵn sàng"}</p>
+            {google.data.lastSuccessfulAccessAt && <p className="text-sm text-muted">Truy cập thành công gần nhất: {localTime(google.data.lastSuccessfulAccessAt)}</p>}</>}
+        <Link href="/settings" className="inline-block text-sm font-medium text-primary underline">Mở Cài đặt</Link>
+      </article>
+    </section>
+    <ApiStatus />
+  </div>;
 }

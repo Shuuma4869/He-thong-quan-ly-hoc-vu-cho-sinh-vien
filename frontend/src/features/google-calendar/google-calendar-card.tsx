@@ -11,8 +11,8 @@ const resultMessage: Record<string, string> = {
   setup: "Đã nhận quyền truy cập nhưng chưa tạo được lịch riêng. Bạn có thể thử hoàn tất thiết lập.",
 };
 
-export function GoogleCalendarCard({ callbackResult }: { callbackResult?: string }) {
-  const connection = useQuery({ queryKey: ["google-calendar-connection"], queryFn: ({ signal }) => getGoogleConnection(signal), retry: false });
+export function GoogleCalendarCard({ callbackResult, userId }: { callbackResult?: string; userId?: string }) {
+  const connection = useQuery({ queryKey: ["google-calendar-connection", userId], queryFn: ({ signal }) => getGoogleConnection(signal), retry: false });
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
