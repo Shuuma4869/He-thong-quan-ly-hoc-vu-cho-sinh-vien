@@ -10,6 +10,8 @@ AMS là dự án cá nhân, không phải hệ thống chính thức của Pheni
 
 Phase 9A có màn hình **Chương trình** tại `/curriculum` để đọc chương trình, nhóm môn và danh mục môn từ PostgreSQL AMS. Màn hình dùng dữ liệu đã lưu, không gọi Phenikaa và không tự đồng bộ khi mở trang. Môn chưa có liên kết chương trình vẫn xem được trong tab **Danh mục môn**, không bị gán thành môn tự chọn. [Hướng dẫn đọc dữ liệu và API](docs/curriculum-catalog.md) giải thích các giá trị chưa xác định và cách phân trang.
 
+Trang **Học vụ** tại `/academic` đọc kết quả trực tiếp qua API của tài khoản AMS đã đăng nhập, nếu tích hợp Phenikaa được bật và tài khoản đã có kết nối hợp lệ. Có thể chọn chương trình để xem; chi tiết tổng kết chỉ được tải khi bấm mở. Mỗi hàng là một đăng ký nguồn quan sát được, kể cả khi nhiều hàng cùng môn và kỳ. Trang không tính GPA, tín chỉ đạt hay chọn kết quả hiện hành. Danh sách rỗng cũng chưa chứng minh rằng nguồn không có dữ liệu. Khi kết nối chưa có hoặc hết hạn, trang báo trạng thái thay vì hiển thị điểm cũ. [Giới hạn của màn hình và API](docs/architecture-overview.md#giao-diện-học-vụ-đọc-trực-tiếp-phase-13b) giải thích rõ các trường dễ hiểu nhầm.
+
 Dashboard đọc riêng trạng thái kết nối Phenikaa, Google Calendar, lượt đồng bộ gần nhất và việc đã có chương trình lưu hay chưa. Nếu một API lỗi, các phần còn lại vẫn hiển thị. Trang **Đồng bộ** tại `/sync` chỉ cho gửi yêu cầu khi backend báo kết nối Phenikaa đang dùng được. Trang theo dõi lượt đang chạy, giải thích lỗi bằng thông báo an toàn và tải lịch sử từng trang. Khi server chưa bật tích hợp Phenikaa, nút đồng bộ bị khóa; đây không phải dấu hiệu tài khoản đã ngắt kết nối. [Chi tiết về giao diện và giới hạn](docs/architecture-overview.md#giao-diện-tổng-quan-và-đồng-bộ).
 
 ## Phạm vi hướng tới
@@ -76,7 +78,7 @@ Phần Phenikaa không tự kết nối khi chạy local. Không cần điền k
 
 Google Calendar cũng tắt mặc định. Muốn thử kết nối, cần tự cấu hình OAuth client và khóa mã hóa riêng theo [hướng dẫn này](docs/google-calendar-integration.md). Không cần cấu hình Google để dùng AMS thông thường. Kết nối thành công chỉ tạo một lịch phụ của AMS; chưa thêm lịch học, lịch thi hay bất kỳ sự kiện nào.
 
-Khi đã có kết nối Phenikaa được cấp qua quy trình nội bộ, backend bật tính năng sẽ có các endpoint `/api/me/academic/source/...` để đọc chương trình và kết quả của chính tài khoản AMS. Chúng **không** tạo `StudentCourse` hoặc `AcademicResult`, không bảo đảm nguồn trả đủ mọi hàng và hiện chưa có màn hình học vụ hoàn chỉnh. Không bật tính năng chỉ để thử API nếu chưa có khóa mã hóa và kết nối hợp lệ.
+Khi đã có kết nối Phenikaa được cấp qua quy trình nội bộ, backend bật tính năng sẽ có các endpoint `/api/me/academic/source/...` để đọc chương trình và kết quả của chính tài khoản AMS. Trang `/academic` dùng các endpoint này để xem, **không** tạo `StudentCourse` hoặc `AcademicResult` và không bảo đảm nguồn trả đủ mọi hàng. Không bật tính năng chỉ để thử API nếu chưa có khóa mã hóa và kết nối hợp lệ.
 
 Khi đã có kết nối hợp lệ, `POST /api/me/sync` yêu cầu làm mới hồ sơ rồi đến những chương trình nguồn có thể đọc; request chỉ xếp hàng và trả `202`, không chờ cổng trường. Xem lượt gần nhất ở `GET /api/me/sync/current`, một lượt cụ thể ở `/api/me/sync/runs/{runId}`, hoặc lịch sử ở `/api/me/sync/runs?limit=20`. Tự xếp hàng theo lịch **mặc định tắt** và phải được người vận hành bật riêng. Worker không tự tạo kết nối từ phiên trình duyệt. [Trạng thái, lịch chạy và giới hạn](docs/architecture-overview.md#vận-hành-đồng-bộ-phase-6b) được ghi riêng.
 

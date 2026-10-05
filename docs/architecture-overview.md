@@ -137,6 +137,14 @@ Client nhận mã tham chiếu dạng băm cho chương trình, đăng ký và c
 
 Các request học vụ trực tiếp có giới hạn tần suất ngắn theo user và loại thao tác bằng khóa Redis chỉ chứa UUID nội bộ. Bộ đọc mở transaction ngắn để kiểm tra kết nối/phiên mã hóa, đóng transaction trước khi gọi HTTP, rồi mở transaction ngắn khác để cập nhật trạng thái kết nối. Trước Phase 6A, đường nhập hồ sơ/chương trình còn giữ khóa qua HTTP; phần này đã được tách ở Phase 6A như mô tả bên dưới. [Hợp đồng endpoint và các giới hạn](phenikaa-integration.md#phase-5e-api-đọc-trực-tiếp-và-ranh-giới-nguồn) được ghi ở tài liệu kết nối.
 
+## Giao diện học vụ đọc trực tiếp Phase 13B
+
+`/academic` là trang cần đăng nhập. Giao diện kiểm tra kết nối Phenikaa trước, rồi đọc bảng khả năng ở `/api/me/academic/source/status`. Chỉ khi nguồn báo `ACADEMIC_RECORDS` ở chế độ `LIVE_READ_ONLY` mới tải chương trình và kết quả. Nếu tích hợp bị tắt, kết nối chưa có hoặc cần cấp lại, trang dừng ở thông báo trạng thái; nó không gọi các endpoint nguồn để thử đoán. Khả năng đọc chi tiết được kiểm tra riêng bằng `ACADEMIC_RESULT_DETAIL`.
+
+Người xem chọn **Chương trình đang xem** khi nguồn trả nhiều lựa chọn. Việc chọn không thay đổi hồ sơ hay chương trình hiện hành trong AMS. Giao diện giữ mỗi đăng ký nguồn thành một hàng, không gộp các hàng cùng môn/kỳ/lần học. “Tín chỉ môn” là thuộc tính của môn, không phải tín chỉ đã đạt. Kết quả và điểm thành phần là các giá trị nguồn đang trả về; trang không tính tổng, GPA hoặc suy ra bản ghi nào là kết quả hiện hành. `UNKNOWN` và danh sách rỗng đều được giải thích như giới hạn quan sát, không đổi thành 0 hay “không có”.
+
+Chi tiết tổng kết chỉ được gọi khi người xem mở một hàng. TanStack Query giữ dữ liệu tạm trong bộ nhớ theo user và reference để mở lại không gọi dồn nguồn; không ghi điểm vào localStorage, sessionStorage, Redis hay bảng học vụ. Reference chỉ dùng bên trong request/cache, không đưa vào URL trang hoặc nhãn giao diện. Các truy vấn không tự poll, refetch khi focus hoặc retry lỗi 429. Nút đọc lại là thao tác chủ động, và backend vẫn áp khoảng nghỉ giữa các lượt đọc. Test giao diện/E2E dùng dữ liệu tổng hợp; chúng không xác nhận đọc được một tài khoản Phenikaa thật.
+
 ## Hạ tầng đồng bộ Phase 6A
 
 `POST /api/me/sync` chỉ tạo một `SyncRun` trạng thái `QUEUED` trong PostgreSQL và trả `202`; user bấm lại khi đang `QUEUED` hoặc `RUNNING` sẽ nhận cùng lượt, không tạo hàng mới. API trạng thái chỉ đọc database và chỉ cho xem lượt của chính user. Chưa có màn hình Sync Center hoặc lịch tự động tạo lượt theo từng tài khoản. Tính năng chỉ có khi bật kết nối Phenikaa và đã có kết nối được cấp hợp lệ; đăng nhập vào cổng trường trong trình duyệt không tự cấp kết nối AMS.
