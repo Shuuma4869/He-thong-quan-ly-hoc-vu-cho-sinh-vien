@@ -8,11 +8,11 @@ import { useTheme } from "next-themes";
 import { LogoutButton } from "@/features/auth/components/logout-button";
 
 const navigation = [
-  { label: "Tổng quan", icon: LayoutDashboard, active: true },
-  { label: "Học vụ", icon: GraduationCap, active: false },
-  { label: "Lịch", icon: CalendarDays, active: false },
-  { label: "Chương trình", icon: BookOpenCheck, active: false },
-  { label: "Đồng bộ", icon: RefreshCw, active: false },
+  { label: "Tổng quan", icon: LayoutDashboard, href: "/" },
+  { label: "Học vụ", icon: GraduationCap, href: null },
+  { label: "Lịch", icon: CalendarDays, href: null },
+  { label: "Chương trình", icon: BookOpenCheck, href: "/curriculum" },
+  { label: "Đồng bộ", icon: RefreshCw, href: null },
 ];
 
 const subscribe = () => () => {};
@@ -31,8 +31,8 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
           <div><p className="font-semibold tracking-tight">AMS</p><p className="text-xs text-muted">Quản lý học vụ</p></div>
         </div>
         <nav className="flex-1 space-y-1 px-3 py-5" aria-label="Điều hướng chính">
-          {navigation.map(({ label, icon: Icon, active }) => active ? (
-            <Link key={label} href="/" aria-current={pathname === "/" ? "page" : undefined} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium ${pathname === "/" ? "bg-primary-soft text-primary" : "text-muted"}`}><Icon className="size-[18px]" />{label}</Link>
+          {navigation.map(({ label, icon: Icon, href }) => href ? (
+            <Link key={label} href={href} aria-current={pathname === href ? "page" : undefined} className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm font-medium ${pathname === href ? "bg-primary-soft text-primary" : "text-muted"}`}><Icon aria-hidden="true" className="size-[18px]" />{label}</Link>
           ) : (
             <span key={label} aria-disabled="true" className="flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-muted"><Icon className="size-[18px]" />{label}<span className="ml-auto text-[10px]">Sắp có</span></span>
           ))}
@@ -54,8 +54,8 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
         </header>
         <main id="main-content" className="mx-auto max-w-[1500px] px-4 py-7 pb-24 lg:px-8 lg:py-10">{children}</main>
         <nav className="fixed inset-x-3 bottom-3 z-30 flex justify-around rounded-2xl border bg-card/95 p-2 shadow-xl backdrop-blur lg:hidden" aria-label="Điều hướng di động">
-          {navigation.slice(0, 4).map(({ label, icon: Icon, active }) => active ? (
-            <Link key={label} href="/" aria-current={pathname === "/" ? "page" : undefined} className={`flex min-w-16 flex-col items-center gap-1 rounded-xl py-1.5 text-[11px] ${pathname === "/" ? "text-primary" : "text-muted"}`}><Icon className="size-5" />{label}</Link>
+          {navigation.slice(0, 4).map(({ label, icon: Icon, href }) => href ? (
+            <Link key={label} href={href} aria-current={pathname === href ? "page" : undefined} className={`flex min-w-16 flex-col items-center gap-1 rounded-xl py-1.5 text-[11px] ${pathname === href ? "text-primary" : "text-muted"}`}><Icon aria-hidden="true" className="size-5" />{label}</Link>
           ) : (
             <span key={label} aria-disabled="true" className="flex min-w-16 flex-col items-center gap-1 rounded-xl py-1.5 text-[11px] text-muted" title="Chưa khả dụng"><Icon className="size-5" />{label}<span className="sr-only"> · Chưa khả dụng</span></span>
           ))}
