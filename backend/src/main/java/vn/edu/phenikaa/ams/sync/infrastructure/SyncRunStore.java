@@ -78,14 +78,20 @@ public class SyncRunStore {
     }
 
     public SyncRun enqueue(UUID userId, Trigger trigger, Instant now) {
+        return enqueueWithResult(userId, trigger, now).run();
+    }
+
+    public EnqueueResult enqueueWithResult(UUID userId, Trigger trigger, Instant now) {
         UUID id = UUID.randomUUID();
         int inserted = jdbc.update("""
                 insert into sync_run(id,user_id,trigger_type,status,requested_at,next_attempt_at,updated_at)
                 values (?, ?, ?, 'QUEUED', ?, ?, ?) on conflict do nothing
                 """, id, userId, trigger.name(), time(now), time(now), time(now));
-        if (inserted == 0) return active(userId).orElseThrow();
-        return owned(userId, id).orElseThrow();
+        if (inserted == 0) return new EnqueueResult(active(userId).orElseThrow(), false);
+        return new EnqueueResult(owned(userId, id).orElseThrow(), true);
     }
+
+    public record EnqueueResult(SyncRun run, boolean created) {}
 
     public Optional<SyncRun> claim(Instant now) {
         return jdbc.query("""

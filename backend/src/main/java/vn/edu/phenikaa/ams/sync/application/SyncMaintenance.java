@@ -67,8 +67,10 @@ public class SyncMaintenance {
         var now = clock.instant();
         int count = transactions.execute(status -> {
             var users = runs.dueUsers(now, autoInterval.toSeconds(), failureCooldown.toSeconds(), autoBatchSize);
-            for (var userId : users) runs.enqueue(userId, SyncRun.Trigger.SCHEDULED, now);
-            return users.size();
+            int created = 0;
+            for (var userId : users)
+                if (runs.enqueueWithResult(userId, SyncRun.Trigger.SCHEDULED, now).created()) created++;
+            return created;
         });
         if (count > 0) {
             metrics.counter("sync.auto.enqueue.total", "result", "ENQUEUED").increment(count);
