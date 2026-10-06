@@ -38,7 +38,7 @@ test("đăng ký, đăng nhập, lưu settings, giữ session khi tải lại v�
   await page.getByLabel("Múi giờ").fill("Asia/Tokyo");
   await page.getByLabel("Giao diện mặc định").selectOption("DARK");
   await page.getByRole("button", { name: "Lưu cài đặt" }).click();
-  await expect(page.getByRole("status")).toHaveText("Đã lưu cài đặt.");
+  await expect(page.getByRole("status").filter({ hasText: "Đã lưu cài đặt." })).toBeVisible();
   await page.reload();
   await expect(page.getByLabel("Múi giờ")).toHaveValue("Asia/Tokyo");
   await expect(page.locator("html")).toHaveClass(/dark/);

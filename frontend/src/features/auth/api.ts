@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { currentUserSchema, settingsSchema, type Settings } from "./schema";
+import { currentUserSchema, settingsSchema, type SettingsUpdate } from "./schema";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) { super(message); }
@@ -38,7 +38,7 @@ export async function register(values: { email: string; password: string; displa
 
 export async function logout() { await authMutation("/api/auth/logout", "{}"); }
 
-export async function saveSettings(values: Settings) {
+export async function saveSettings(values: SettingsUpdate) {
   const response = await authMutation("/api/me/settings", JSON.stringify(values), "PUT");
   return settingsSchema.parse(await response.json());
 }
