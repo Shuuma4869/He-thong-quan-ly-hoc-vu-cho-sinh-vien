@@ -9,7 +9,7 @@ import { LogoutButton } from "@/features/auth/components/logout-button";
 
 const navigation = [
   { label: "Tổng quan", icon: LayoutDashboard, href: "/" },
-  { label: "Học vụ", icon: GraduationCap, href: null },
+  { label: "Học vụ", icon: GraduationCap, href: "/academic" },
   { label: "Lịch", icon: CalendarDays, href: null },
   { label: "Chương trình", icon: BookOpenCheck, href: "/curriculum" },
   { label: "Đồng bộ", icon: RefreshCw, href: "/sync" },
