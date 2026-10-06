@@ -35,14 +35,15 @@ public class UserPreferences {
         if (changed) {
             this.notificationEmailVerifiedAt = null;
             this.syncEmailAlertsEnabled = false;
+        } else {
+            if (syncEmailAlertsEnabled && notificationEmailVerifiedAt == null)
+                throw new IllegalStateException("Notification email is not verified");
+            this.syncEmailAlertsEnabled = syncEmailAlertsEnabled;
         }
-        if (syncEmailAlertsEnabled && (changed || notificationEmailVerifiedAt == null))
-            throw new IllegalStateException("Notification email is not verified");
         this.notificationEmail = notificationEmail;
         this.timezone = timezone;
         this.locale = locale;
         this.theme = theme;
-        this.syncEmailAlertsEnabled = syncEmailAlertsEnabled;
         this.updatedAt = Instant.now();
         return changed;
     }

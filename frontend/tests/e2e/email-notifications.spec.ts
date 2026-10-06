@@ -14,7 +14,12 @@ test("xác minh email và bật cảnh báo đồng bộ với provider giả", 
   });
   await page.route("**/api/me/settings", async (route) => {
     const body = route.request().postDataJSON();
-    if (body.syncEmailAlertsEnabled) {
+    if (status.notificationEmail && body.notificationEmail !== status.notificationEmail) {
+      expect(body.syncEmailAlertsEnabled).toBe(true);
+      status.notificationEmail = body.notificationEmail;
+      status.verified = false; status.verifiedAt = null; status.syncAlertsEnabled = false;
+      await route.fulfill({ json: { ...body, notificationEmailVerifiedAt: null, syncEmailAlertsEnabled: false } });
+    } else if (body.syncEmailAlertsEnabled) {
       status.syncAlertsEnabled = true;
       await route.fulfill({ json: { ...body, notificationEmailVerifiedAt: status.verifiedAt } });
     } else {
@@ -36,6 +41,14 @@ test("xác minh email và bật cảnh báo đồng bộ với provider giả", 
   await expect(page.getByRole("status").filter({ hasText: "Đã xác minh." })).toBeVisible();
   await page.getByRole("checkbox", { name: "Nhận email khi đồng bộ cần chú ý" }).click();
   await expect(page.getByText("Đã bật cảnh báo đồng bộ.")).toBeVisible();
+  await page.getByLabel("Email nhận thông báo").fill("changed@example.test");
+  await page.getByRole("button", { name: "Lưu cài đặt" }).click();
+  await expect(page.getByRole("status").filter({ hasText: "Đã lưu cài đặt." })).toBeVisible();
+  await expect(page.getByRole("status").filter({ hasText: "Chưa xác minh." })).toBeVisible();
+  await expect(page.getByText("Email nhận thông báo: changed@example.test")).toBeVisible();
+  await expect(page.getByRole("checkbox", { name: "Nhận email khi đồng bộ cần chú ý" })).toBeDisabled();
+  await expect(page.getByRole("checkbox", { name: "Nhận email khi đồng bộ cần chú ý" })).not.toBeChecked();
+  await expect(page.getByRole("button", { name: "Gửi mã xác minh" })).toBeVisible();
   for (const width of [320, 375]) {
     await page.setViewportSize({ width, height: 800 });
     const card = page.getByRole("region", { name: "Thông báo email" });

@@ -145,6 +145,36 @@ class EmailNotificationIT {
         assertThatThrownBy(() -> verification.confirm(owner.getId(), code)).isInstanceOf(RuntimeException.class);
     }
 
+    @Test void changingVerifiedEmailWithAlertsEnabledSavesNewEmailAndDisablesAlerts() throws Exception {
+        var owner = account();
+        accounts.updateSettings(owner.getId(), settings("a@example.test", false));
+        when(gateway.send(any())).thenReturn(new DeliveryResult("synthetic-id", DeliveryStatus.ACCEPTED));
+        verification.request(owner.getId());
+        String oldCode = sentCode();
+        verification.confirm(owner.getId(), oldCode);
+        assertThat(accounts.updateSettings(owner.getId(), settings("a@example.test", true))
+                .syncEmailAlertsEnabled()).isTrue();
+
+        mvc.perform(put("/api/me/settings").with(user(new AccountPrincipal(owner))).with(csrf())
+                .contentType("application/json").content("""
+                        {"notificationEmail":"b@example.test","timezone":"Asia/Tokyo",
+                         "locale":"vi-VN","theme":"SYSTEM","syncEmailAlertsEnabled":true}
+                        """))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.notificationEmail").value("b@example.test"))
+                .andExpect(jsonPath("$.notificationEmailVerifiedAt").isEmpty())
+                .andExpect(jsonPath("$.syncEmailAlertsEnabled").value(false))
+                .andExpect(jsonPath("$.timezone").value("Asia/Tokyo"));
+
+        var saved = accounts.currentUser(owner.getId()).settings();
+        assertThat(saved.notificationEmail()).isEqualTo("b@example.test");
+        assertThat(saved.notificationEmailVerifiedAt()).isNull();
+        assertThat(saved.syncEmailAlertsEnabled()).isFalse();
+        assertThatThrownBy(() -> verification.confirm(owner.getId(), oldCode)).isInstanceOf(RuntimeException.class);
+        assertThatThrownBy(() -> accounts.updateSettings(owner.getId(), settings("b@example.test", true)))
+                .isInstanceOf(ResponseStatusException.class);
+    }
+
     @Test void providerRejectionIsSafeAndStillStartsResendCooldown() throws Exception {
         var owner = account();
         accounts.updateSettings(owner.getId(), settings("notify@example.test", false));
