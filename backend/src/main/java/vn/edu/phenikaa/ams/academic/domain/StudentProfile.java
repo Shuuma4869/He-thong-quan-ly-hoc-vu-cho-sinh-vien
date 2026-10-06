@@ -35,6 +35,7 @@ public class StudentProfile {
         AcademicValues.sameProfile(id, curriculum);
         curriculumId = curriculum.getId();
     }
+    public void clearCurriculumSelection() { curriculumId = null; }
     public void updateSourceProfile(String studentNumber, String programName) {
         String number = AcademicValues.optionalText(studentNumber, 80);
         String program = AcademicValues.optionalText(programName, 200);

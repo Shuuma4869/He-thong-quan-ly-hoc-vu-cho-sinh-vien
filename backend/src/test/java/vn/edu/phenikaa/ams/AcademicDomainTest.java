@@ -50,6 +50,15 @@ class AcademicDomainTest {
     }
 
     @Test
+    void clearingCurriculumSelectionDoesNotChangeOtherProfileFields() {
+        var f = new AcademicFixtures();
+        f.profile.selectCurriculum(f.curriculum);
+        f.profile.clearCurriculumSelection();
+        assertThat(f.profile.getCurriculumId()).isNull();
+        assertThat(f.profile.getUserId()).isEqualTo(f.user.getId());
+    }
+
+    @Test
     void electiveGroupsAndPrerequisitesHaveExplicitRules() {
         var f = new AcademicFixtures();
         assertThatThrownBy(() -> new CurriculumCourse(f.curriculum, f.course, CurriculumCourse.Requirement.ELECTIVE, null, BigDecimal.ONE, 1))
