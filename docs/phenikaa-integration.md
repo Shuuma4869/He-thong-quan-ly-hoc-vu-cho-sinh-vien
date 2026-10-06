@@ -4,6 +4,8 @@
 
 > Phase 14A mở API và trang **Lịch** để đọc lịch cá nhân/lịch thi theo yêu cầu của người dùng, nhưng vẫn không lưu lịch. Những đoạn bên dưới nói “chưa mở REST” mô tả đúng mốc Phase 5E, không phải trạng thái hiện tại. Xem [ranh giới của trang lịch](architecture-overview.md#lịch-học-và-lịch-thi-đọc-trực-tiếp-phase-14a).
 
+> Phase 16B kiểm tra riêng các bảng tiến độ/tổng hợp mà cổng báo, không mở API hay màn hình mới. [Bằng chứng và quyết định về tiến độ do nguồn báo](academic-progress-evidence.md) tách giá trị nguồn trả về khỏi GPA/tín chỉ do AMS tự tính.
+
 Tài liệu này ghi lại các lượt kiểm tra cổng QLĐT Phenikaa từ 18 đến 30/09/2026 và những việc cần làm rõ trước khi mở thêm khả năng kết nối cho AMS. Người tiếp tục phát triển có thể đọc phần đầu để hiểu hướng xử lý, rồi tra đường dẫn API và tên trường ở các phần sau.
 
 Phạm vi của phần Phase 3 bên dưới là khảo sát. Khi đó adapter chưa gọi HTTP hoặc nhập dữ liệu; không dùng nhận định lịch sử này để thay cho kết quả Phase 4A/4B ở cuối tài liệu.
