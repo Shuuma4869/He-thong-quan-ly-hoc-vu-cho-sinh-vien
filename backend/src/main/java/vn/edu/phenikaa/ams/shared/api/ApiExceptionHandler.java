@@ -75,6 +75,7 @@ public class ApiExceptionHandler {
         var status = switch (exception.code()) {
             case CONNECTION_NOT_FOUND, RECONNECTION_REQUIRED -> HttpStatus.CONFLICT;
             case INVALID_SOURCE_REFERENCE -> HttpStatus.NOT_FOUND;
+            case INVALID_SOURCE_RANGE -> HttpStatus.BAD_REQUEST;
             case SOURCE_TIMEOUT -> HttpStatus.GATEWAY_TIMEOUT;
             case RATE_LIMITED -> HttpStatus.TOO_MANY_REQUESTS;
             default -> HttpStatus.BAD_GATEWAY;
@@ -83,6 +84,7 @@ public class ApiExceptionHandler {
             case CONNECTION_NOT_FOUND -> "Chưa có kết nối học vụ có thể sử dụng.";
             case RECONNECTION_REQUIRED -> "Phiên học vụ đã hết hạn; cần kết nối lại.";
             case INVALID_SOURCE_REFERENCE -> "Không tìm thấy dữ liệu học vụ được yêu cầu.";
+            case INVALID_SOURCE_RANGE -> "Khoảng ngày phải hợp lệ và không vượt quá 31 ngày.";
             case SOURCE_TIMEOUT -> "Cổng học vụ phản hồi quá chậm.";
             case RATE_LIMITED -> "Vui lòng chờ trước khi đọc lại dữ liệu học vụ.";
             default -> "Chưa thể đọc dữ liệu học vụ từ nguồn.";

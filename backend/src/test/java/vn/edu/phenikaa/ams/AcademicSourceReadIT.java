@@ -2,6 +2,9 @@ package vn.edu.phenikaa.ams;
 
 import java.math.BigDecimal;
 import java.security.SecureRandom;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.Base64;
 import java.util.List;
 import java.util.UUID;
@@ -130,5 +133,49 @@ class AcademicSourceReadIT {
         mvc.perform(get("/api/me/academic/source/status").with(user(new AccountPrincipal(owner))))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.connectionState").value("RECONNECTION_REQUIRED"));
+    }
+
+    @Test void ownedScheduleAndExamsStayReadOnlyWithOpaquePeriodReferences() throws Exception {
+        try (var material = new PhenikaaSessionMaterial("Bearer synthetic-secret", "", "synthetic-response-key",
+                "synthetic-learner-one", "synthetic-profile-function", "synthetic-schedule-function",
+                "synthetic-exam-function", "synthetic-academic-function")) {
+            portal.connect(owner.getId(), material);
+        }
+        var day = LocalDate.of(2026, 10, 1);
+        var scheduleRow = new ScheduleObservation.Entry(new ScheduleObservation.CandidateIdentity(
+                "private-schedule-id", "private-section-id", "private-enrollment-id"), null, day,
+                null, null, null, null, ScheduleObservation.Kind.UNKNOWN);
+        when(http.fetchSchedule(any(), eq(day), eq(day))).thenReturn(new ScheduleObservation(
+                day, day, ZoneId.of("Asia/Ho_Chi_Minh"), List.of(scheduleRow, scheduleRow)));
+        String schedule = mvc.perform(get("/api/me/academic/source/schedule")
+                        .param("from", "2026-10-01").param("through", "2026-10-01")
+                        .with(user(new AccountPrincipal(owner))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.entries.length()").value(2))
+                .andExpect(jsonPath("$.completeness").value("UNKNOWN"))
+                .andExpect(jsonPath("$.identityScope").value("UNVERIFIED"))
+                .andReturn().getResponse().getContentAsString();
+        assertThat(schedule).doesNotContain("private-schedule-id", "private-section-id", "private-enrollment-id");
+
+        var period = new ExamPeriod("private-period-id", "Kỳ nguồn giả định");
+        when(http.fetchExamPeriods(any())).thenReturn(List.of(period));
+        String periods = mvc.perform(get("/api/me/academic/source/exams/periods")
+                        .with(user(new AccountPrincipal(owner))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.completeness").value("UNKNOWN"))
+                .andReturn().getResponse().getContentAsString();
+        String ref = json.readTree(periods).path("periods").get(0).path("periodRef").asText();
+        assertThat(ref).matches("ep_[0-9a-f]{64}");
+        assertThat(periods).doesNotContain(period.sourceId());
+        var examRow = new ExamObservation.Entry(new ExamObservation.CandidateIdentity("private-exam-id"),
+                "TEST101", "Môn kiểm thử A", 2, null, Instant.parse("2026-10-01T01:30:00Z"), null, null);
+        when(http.fetchExams(any(), eq(period))).thenReturn(new ExamObservation(period,
+                ZoneId.of("Asia/Ho_Chi_Minh"), List.of(examRow, examRow)));
+        String exams = mvc.perform(get("/api/me/academic/source/exams").param("periodRef", ref)
+                        .with(user(new AccountPrincipal(owner))))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.entries.length()").value(2))
+                .andExpect(jsonPath("$.entries[0].startsAt").value("08:30:00"))
+                .andReturn().getResponse().getContentAsString();
+        assertThat(exams).doesNotContain("private-exam-id", period.sourceId());
+        assertThat(jdbc.queryForObject("select count(*) from class_session", Integer.class)).isZero();
+        assertThat(jdbc.queryForObject("select count(*) from exam", Integer.class)).isZero();
     }
 }

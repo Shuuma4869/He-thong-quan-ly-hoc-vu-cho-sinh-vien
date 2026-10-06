@@ -151,6 +151,16 @@ Người xem chọn **Chương trình đang xem** khi nguồn trả nhiều lự
 
 Chi tiết tổng kết chỉ được gọi khi người xem mở một hàng. TanStack Query giữ dữ liệu tạm trong bộ nhớ theo user và reference để mở lại không gọi dồn nguồn; không ghi điểm vào localStorage, sessionStorage, Redis hay bảng học vụ. Reference chỉ dùng bên trong request/cache, không đưa vào URL trang hoặc nhãn giao diện. Các truy vấn không tự poll, refetch khi focus hoặc retry lỗi 429. Nút đọc lại là thao tác chủ động, và backend vẫn áp khoảng nghỉ giữa các lượt đọc. Test giao diện/E2E dùng dữ liệu tổng hợp; chúng không xác nhận đọc được một tài khoản Phenikaa thật.
 
+## Lịch học và lịch thi đọc trực tiếp Phase 14A
+
+`/schedule` là trang cần đăng nhập. Trang kiểm tra kết nối Phenikaa và bảng khả năng nguồn trước khi mở thao tác đọc lịch. Kết nối mất hoặc trạng thái nguồn đổi sang cần kết nối lại sẽ chặn request tiếp theo. Người dùng tự chọn khoảng ngày rồi bấm **Đọc lịch**; lịch thi có bước đọc danh sách bộ lọc kỳ thi, chọn một kỳ rồi bấm **Đọc lịch thi**. Chuyển tab hoặc sửa ngày không tự gọi nguồn. Mỗi loại request có cooldown riêng theo user trong Redis; lỗi 429 không tự retry.
+
+Ba endpoint mới của `AcademicSourceController` là `GET /schedule?from=...&through=...`, `GET /exams/periods` và `GET /exams?periodRef=...`, cùng dưới `/api/me/academic/source`. Khoảng lịch cá nhân có 1–31 ngày tính cả hai đầu; lỗi định dạng hoặc vượt khoảng trả `INVALID_SOURCE_RANGE`/400 trước khi gọi nguồn. API so sánh lại ngày, múi giờ và giới hạn số hàng của observation. Kỳ thi chỉ là **bộ lọc nguồn**, không phải Semester AMS. `periodRef` là băm gắn với user và ID kỳ nguồn; khi sử dụng, service lấy lại danh sách của user rồi mới tìm kỳ khớp. Browser không nhận ID nguồn hay các `CandidateIdentity` của buổi/thi.
+
+Response giữ `completeness=UNKNOWN` và `identityScope=UNVERIFIED`. `UNKNOWN` nghĩa là chưa chứng minh nguồn trả đủ bản ghi; `UNVERIFIED` nghĩa là chưa có khóa ổn định cho mỗi buổi hay lần thi. Danh sách rỗng chỉ nói rằng lượt đọc này không trả hàng. Các trường thời gian/phòng/giảng viên có thể null và frontend giải thích chúng bằng chữ, không tạo giờ/phòng giả. Lịch thi chuyển `Instant` về ngày/giờ `Asia/Ho_Chi_Minh` ở backend; lịch cá nhân giữ giờ địa phương nguồn. Hai hàng giống nhau không bị gộp.
+
+Ba phương thức đọc của Phenikaa adapter dùng `accessRead`: transaction ngắn lấy và giải mã phiên, HTTP ngoài transaction, transaction ngắn cập nhật trạng thái với kiểm tra `authenticatedAt`. API không lưu lịch/thi vào PostgreSQL, Redis hay browser storage; chưa tạo `ClassSession`, `Exam`, snapshot, change record, Google event hoặc thông báo lịch. `IDLICHHOC` từng lặp qua nhiều ngày, nên việc đọc được trang không tháo gỡ chặn về định danh buổi và phát hiện thay đổi. Test tự động dùng dữ liệu tổng hợp; chưa kiểm chứng API mới với một kết nối Phenikaa được cấp hợp lệ.
+
 ## Hạ tầng đồng bộ Phase 6A
 
 `POST /api/me/sync` chỉ tạo một `SyncRun` trạng thái `QUEUED` trong PostgreSQL và trả `202`; user bấm lại khi đang `QUEUED` hoặc `RUNNING` sẽ nhận cùng lượt, không tạo hàng mới. API trạng thái chỉ đọc database và chỉ cho xem lượt của chính user. Chưa có màn hình Sync Center hoặc lịch tự động tạo lượt theo từng tài khoản. Tính năng chỉ có khi bật kết nối Phenikaa và đã có kết nối được cấp hợp lệ; đăng nhập vào cổng trường trong trình duyệt không tự cấp kết nối AMS.

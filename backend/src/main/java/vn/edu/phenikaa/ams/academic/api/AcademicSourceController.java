@@ -45,4 +45,23 @@ public class AcademicSourceController {
                              @RequestParam String programRef, @PathVariable String detailRef) {
         return queries.detail(principal.getUserId(), programRef, detailRef);
     }
+
+    @Operation(summary = "Đọc lịch cá nhân trực tiếp", description = "Chỉ đọc một khoảng 1–31 ngày; độ đầy đủ và định danh từng buổi chưa xác minh.")
+    @GetMapping("/schedule")
+    public ScheduleView schedule(@AuthenticationPrincipal AccountPrincipal principal,
+                                 @RequestParam String from, @RequestParam String through) {
+        return queries.schedule(principal.getUserId(), from, through);
+    }
+
+    @Operation(summary = "Bộ lọc kỳ thi từ nguồn", description = "Các lựa chọn chỉ dùng để đọc lịch thi, không phải học kỳ AMS.")
+    @GetMapping("/exams/periods")
+    public ExamPeriodsView examPeriods(@AuthenticationPrincipal AccountPrincipal principal) {
+        return queries.examPeriods(principal.getUserId());
+    }
+
+    @Operation(summary = "Đọc lịch thi trực tiếp", description = "Reference kỳ thi được đối chiếu lại với danh sách của tài khoản hiện tại.")
+    @GetMapping("/exams")
+    public ExamsView exams(@AuthenticationPrincipal AccountPrincipal principal, @RequestParam String periodRef) {
+        return queries.exams(principal.getUserId(), periodRef);
+    }
 }

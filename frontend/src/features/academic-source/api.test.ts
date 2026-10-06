@@ -13,8 +13,8 @@ describe("Academic source API", () => {
       { capability: "COURSE_CATALOG", mode: "PERSISTED_PARTIAL", completeness: "UNKNOWN" },
       { capability: "ACADEMIC_RECORDS", mode: "LIVE_READ_ONLY", completeness: "UNKNOWN" },
       { capability: "ACADEMIC_RESULT_DETAIL", mode: "LIVE_READ_ONLY", completeness: "UNKNOWN" },
-      { capability: "SCHEDULE", mode: "ADAPTER_READ_ONLY_NO_API", completeness: "UNKNOWN" },
-      { capability: "EXAMS", mode: "ADAPTER_READ_ONLY_NO_API", completeness: "UNKNOWN" },
+      { capability: "SCHEDULE", mode: "LIVE_READ_ONLY", completeness: "UNKNOWN" },
+      { capability: "EXAMS", mode: "LIVE_READ_ONLY", completeness: "UNKNOWN" },
       { capability: "STUDENT_COURSE", mode: "BLOCKED_SOURCE_LIMIT", completeness: "UNKNOWN" },
       { capability: "ACADEMIC_RESULT", mode: "BLOCKED_SOURCE_LIMIT", completeness: "UNKNOWN" },
       { capability: "CLASS_SESSION", mode: "BLOCKED_SOURCE_LIMIT", completeness: "UNKNOWN" },
@@ -30,6 +30,8 @@ describe("Academic source API", () => {
     expect(parsed.capabilities).toHaveLength(12);
     expect(hasLiveCapability(parsed, "ACADEMIC_RECORDS")).toBe(true);
     expect(hasLiveCapability(parsed, "ACADEMIC_RESULT_DETAIL")).toBe(true);
+    expect(hasLiveCapability(parsed, "SCHEDULE")).toBe(true);
+    expect(hasLiveCapability(parsed, "EXAMS")).toBe(true);
     expect(hasLiveCapability(parsed, "PROFILE")).toBe(false);
     expect(hasLiveCapability(parsed, "STUDENT_COURSE")).toBe(false);
     expect(hasLiveCapability({ ...parsed, connectionState: "RECONNECTION_REQUIRED" }, "ACADEMIC_RECORDS")).toBe(false);

@@ -1,6 +1,8 @@
 package vn.edu.phenikaa.ams.academic.api;
 
 import java.math.BigDecimal;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,6 +41,11 @@ class AcademicSourceControllerTest {
         mvc.perform(get("/api/me/academic/source/records").param("programRef", "pr_test"))
                 .andExpect(status().isUnauthorized());
         mvc.perform(get("/api/me/academic/source/records/dt_test/detail").param("programRef", "pr_test"))
+                .andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/me/academic/source/schedule").param("from", "2026-10-01")
+                .param("through", "2026-10-01")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/me/academic/source/exams/periods")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/me/academic/source/exams").param("periodRef", "ep_test"))
                 .andExpect(status().isUnauthorized());
         verifyNoInteractions(queries);
     }
@@ -101,5 +108,43 @@ class AcademicSourceControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.completeness").value("UNKNOWN"))
                 .andExpect(jsonPath("$.programs").isEmpty());
+    }
+
+    @Test void scheduleAndExamsExposeOnlySourceSafeFields() throws Exception {
+        var day = LocalDate.of(2026, 10, 1);
+        when(queries.schedule(principal.getUserId(), "2026-10-01", "2026-10-01"))
+                .thenReturn(new ScheduleView("UNKNOWN", "UNVERIFIED", "Asia/Ho_Chi_Minh", day, day,
+                        List.of(new ScheduleEntryView(null, day, null, null, null, null, "UNKNOWN"))));
+        when(queries.examPeriods(principal.getUserId()))
+                .thenReturn(new ExamPeriodsView("UNKNOWN", List.of(new ExamPeriodView("ep_opaque", "Kỳ nguồn"))));
+        when(queries.exams(principal.getUserId(), "ep_opaque"))
+                .thenReturn(new ExamsView("UNKNOWN", "UNVERIFIED", "Asia/Ho_Chi_Minh",
+                        new ExamPeriodView("ep_opaque", "Kỳ nguồn"), List.of(
+                        new ExamEntryView("TEST101", "Môn kiểm thử", 2, null, day, LocalTime.of(8, 30), null, null))));
+        String schedule = mvc.perform(get("/api/me/academic/source/schedule")
+                        .param("from", "2026-10-01").param("through", "2026-10-01").with(user(principal)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.identityScope").value("UNVERIFIED"))
+                .andExpect(jsonPath("$.entries.length()").value(1))
+                .andExpect(jsonPath("$.entries[0].startsAt").isEmpty())
+                .andReturn().getResponse().getContentAsString();
+        String periods = mvc.perform(get("/api/me/academic/source/exams/periods").with(user(principal)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.periods[0].periodRef").value("ep_opaque"))
+                .andReturn().getResponse().getContentAsString();
+        String exams = mvc.perform(get("/api/me/academic/source/exams").param("periodRef", "ep_opaque")
+                        .with(user(principal)))
+                .andExpect(status().isOk()).andExpect(jsonPath("$.entries[0].examAttempt").value(2))
+                .andExpect(jsonPath("$.entries[0].endsAt").isEmpty())
+                .andReturn().getResponse().getContentAsString();
+        assertThat(schedule + periods + exams).doesNotContain("scheduleId", "sectionId", "sourceId",
+                "learnerId", "studentCourseId", "examId", "classSessionId", "IDLICHHOC");
+    }
+
+    @Test void invalidScheduleRangeUsesSafe400Code() throws Exception {
+        when(queries.schedule(principal.getUserId(), "bad", "2026-10-01"))
+                .thenThrow(new AcademicSourceQueryException(AcademicSourceQueryException.Code.INVALID_SOURCE_RANGE));
+        mvc.perform(get("/api/me/academic/source/schedule").param("from", "bad")
+                        .param("through", "2026-10-01").with(user(principal)))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_SOURCE_RANGE"));
     }
 }
