@@ -8,6 +8,7 @@ import {
   AcademicSourceError, academicKeys, getPrograms, getRecords, getResultDetail, getSourceStatus,
   hasLiveCapability, sourceErrorMessage, type AcademicRecord,
 } from "./api";
+import { ProgressSummaryPanel } from "./progress-summary";
 
 const panel = "min-w-0 space-y-4 rounded-2xl border bg-card p-5 sm:p-6";
 const liveQuery = { retry: false as const, staleTime: 60_000, refetchOnWindowFocus: false,
@@ -140,6 +141,7 @@ export function AcademicRecords({ userId }: { userId: string }) {
             : recordsEnabled ? <><p>Đã kết nối nguồn học vụ.</p><p className="text-sm text-muted">Kết quả học tập: đọc trực tiếp, chỉ để xem; độ đầy đủ chưa được xác nhận.</p></>
             : <p>Khả năng đọc kết quả trực tiếp hiện không khả dụng.</p>}</>}
     </section>
+    <ProgressSummaryPanel userId={userId} connected={connected} status={status.data} />
     {connected && recordsEnabled && <section className={panel} aria-labelledby="programs-title">
       <div className="flex flex-wrap items-center justify-between gap-3"><h2 id="programs-title" className="text-lg font-semibold">Chương trình nguồn trả về</h2>
         <Button variant="outline" disabled={programs.isFetching} onClick={() => { setSelectedProgramRef(null); void programs.refetch(); }}>Đọc lại chương trình</Button></div>

@@ -1,11 +1,35 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AcademicSourceError, getPrograms, getRecords, getResultDetail, getSourceStatus, hasLiveCapability, sourceErrorMessage } from "./api";
+import { AcademicSourceError, getPrograms, getProgressSummary, getRecords, getResultDetail, getSourceStatus, hasLiveCapability, sourceErrorMessage } from "./api";
 
 const program = `pr_${"a".repeat(64)}`;
 const detail = `dt_${"b".repeat(64)}`;
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Academic source API", () => {
+  const progress = { mode: "SOURCE_REPORTED_LIVE_READ_ONLY", completeness: "UNKNOWN", selectionMode: "USER_SELECTED_AMS",
+    curriculum: { id: "00000000-0000-4000-8000-000000000001", code: "TEST", name: "Chương trình kiểm thử" },
+    summary: { cumulativeAverageScale4: 3.25, cumulativeAverageScale10: 8.1, sourceAccumulatedCredits: 72 } };
+
+  it("strictly parses source-reported progress and sends no source identifier", async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(progress)));
+    vi.stubGlobal("fetch", fetcher);
+    expect(await getProgressSummary()).toEqual(progress);
+    expect(fetcher).toHaveBeenCalledWith("/api/me/academic/source/progress-summary",
+      expect.objectContaining({ credentials: "same-origin", cache: "no-store" }));
+  });
+
+  it.each([
+    { mode: "AMS_DERIVED_PROGRESS" }, { completeness: "COMPLETE" }, { selectionMode: "SOURCE_SELECTED" },
+    { curriculum: { ...progress.curriculum, id: "bad" } },
+    { summary: { ...progress.summary, sourceAccumulatedCredits: -1 } },
+    { summary: { ...progress.summary, cumulativeAverageScale4: "3.25" } },
+    { sourceProgramId: "private-id" },
+    { summary: { ...progress.summary, sourceId: "private-id" } },
+  ])("rejects unsafe progress contract %#", async (change) => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ ...progress, ...change }))));
+    await expect(getProgressSummary()).rejects.toThrow();
+  });
+
   it("parses the complete backend status contract and only enables live academic capabilities", async () => {
     const status = { connectionState: "CONNECTED", lastSuccessfulAccessAt: null, capabilities: [
       { capability: "PROFILE", mode: "PERSISTED", completeness: "SOURCE_VERIFIED" },
@@ -78,6 +102,8 @@ describe("Academic source API", () => {
     ["SOURCE_DATA_INCOMPLETE", "chưa nhất quán"],
     ["SOURCE_UNAVAILABLE", "không sẵn sàng"],
     ["INVALID_SOURCE_REFERENCE", "đọc lại danh sách"],
+    ["CURRICULUM_SELECTION_REQUIRED", "cần chọn chương trình"],
+    ["SOURCE_PROGRESS_UNAVAILABLE", "Chưa thể đối chiếu"],
   ] as const)("maps %s without revealing a server message", async (code, label) => {
     vi.stubGlobal("fetch", vi.fn().mockImplementation(() => Promise.resolve(new Response(JSON.stringify({ code, detail: "private source data" }), { status: 502 }))));
     try { await getSourceStatus(); } catch (error) {

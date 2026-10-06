@@ -10,6 +10,7 @@ const backendCapabilities = [
   { capability: "COURSE_CATALOG", mode: "PERSISTED_PARTIAL", completeness: "UNKNOWN" },
   { capability: "ACADEMIC_RECORDS", mode: "LIVE_READ_ONLY", completeness: "UNKNOWN" },
   { capability: "ACADEMIC_RESULT_DETAIL", mode: "LIVE_READ_ONLY", completeness: "UNKNOWN" },
+  { capability: "ACADEMIC_PROGRESS_SUMMARY", mode: "LIVE_READ_ONLY", completeness: "UNKNOWN" },
   { capability: "SCHEDULE", mode: "LIVE_READ_ONLY", completeness: "UNKNOWN" },
   { capability: "EXAMS", mode: "LIVE_READ_ONLY", completeness: "UNKNOWN" },
   { capability: "STUDENT_COURSE", mode: "BLOCKED_SOURCE_LIMIT", completeness: "UNKNOWN" },
@@ -18,6 +19,53 @@ const backendCapabilities = [
   { capability: "EXAM_PERSISTENCE", mode: "BLOCKED_SOURCE_LIMIT", completeness: "UNKNOWN" },
   { capability: "PREREQUISITE", mode: "BLOCKED_PARTIAL", completeness: "UNKNOWN" },
 ];
+
+for (const width of [1280, 375, 320]) {
+  test(`Source-reported progress is a manual read at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await createAccountAndLogin(page);
+    let progressRequests = 0;
+    const curriculumId = "00000000-0000-4000-8000-000000000001";
+    await page.route("**/api/me/academic/curriculum-selection", (route) => route.fulfill({ json: {
+      selectionMode: "USER_SELECTED_AMS", curriculum: { id: curriculumId, code: "TEST", name: "Chương trình kiểm thử",
+        cohort: null, revision: null, minimumCredits: 100 },
+    } }));
+    await page.route("**/api/me/connections/phenikaa", (route) => route.fulfill({ json: {
+      status: "CONNECTED", lastAuthenticatedAt: "2026-01-01T00:00:00Z", lastSuccessfulAccessAt: null,
+      lastFailedAccessAt: null, lastFailureCode: null, reconnectionRequired: false,
+    } }));
+    await page.route("**/api/me/academic/source/**", (route) => {
+      const url = new URL(route.request().url());
+      if (url.pathname.endsWith("/status")) return route.fulfill({ json: {
+        connectionState: "CONNECTED", lastSuccessfulAccessAt: null, capabilities: backendCapabilities,
+      } });
+      if (url.pathname.endsWith("/programs")) return route.fulfill({ json: { completeness: "UNKNOWN", programs: [] } });
+      if (url.pathname.endsWith("/progress-summary")) {
+        progressRequests++;
+        expect(url.search).toBe("");
+        return route.fulfill({ json: {
+          mode: "SOURCE_REPORTED_LIVE_READ_ONLY", completeness: "UNKNOWN", selectionMode: "USER_SELECTED_AMS",
+          curriculum: { id: curriculumId, code: "TEST", name: "Chương trình kiểm thử" },
+          summary: { cumulativeAverageScale4: 3.25, cumulativeAverageScale10: 8.1, sourceAccumulatedCredits: 72 },
+        } });
+      }
+      return route.abort();
+    });
+    await page.goto("/academic");
+    const button = page.getByRole("button", { name: "Đọc tổng hợp tích lũy từ nguồn" });
+    await expect(button).toBeEnabled();
+    expect(progressRequests).toBe(0);
+    await button.click();
+    await expect(page.getByText("Giá trị tín chỉ tích lũy — nguồn báo")).toBeVisible();
+    await expect(page.getByText("3.25")).toBeVisible();
+    expect(progressRequests).toBe(1);
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.reload();
+    await expect(button).toBeEnabled();
+    expect(progressRequests).toBe(1);
+    await expect(page.getByText("Giá trị tín chỉ tích lũy — nguồn báo")).toHaveCount(0);
+  });
+}
 const record = (ref: string) => ({ registrationRef: ref,
   course: { code: "TEST101", name: "Môn tổng hợp", credits: 1.5 },
   semester: { academicYearStart: 2025, termCode: "1", code: "2025-1" }, reportedLearningAttempt: 2,
