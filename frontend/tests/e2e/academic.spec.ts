@@ -4,6 +4,20 @@ import { createAccountAndLogin } from "./auth-helpers";
 const programOne = `pr_${"a".repeat(64)}`;
 const programTwo = `pr_${"b".repeat(64)}`;
 const detail = `dt_${"c".repeat(64)}`;
+const backendCapabilities = [
+  { capability: "PROFILE", mode: "PERSISTED", completeness: "SOURCE_VERIFIED" },
+  { capability: "CURRICULUM", mode: "PERSISTED_PARTIAL", completeness: "UNKNOWN" },
+  { capability: "COURSE_CATALOG", mode: "PERSISTED_PARTIAL", completeness: "UNKNOWN" },
+  { capability: "ACADEMIC_RECORDS", mode: "LIVE_READ_ONLY", completeness: "UNKNOWN" },
+  { capability: "ACADEMIC_RESULT_DETAIL", mode: "LIVE_READ_ONLY", completeness: "UNKNOWN" },
+  { capability: "SCHEDULE", mode: "ADAPTER_READ_ONLY_NO_API", completeness: "UNKNOWN" },
+  { capability: "EXAMS", mode: "ADAPTER_READ_ONLY_NO_API", completeness: "UNKNOWN" },
+  { capability: "STUDENT_COURSE", mode: "BLOCKED_SOURCE_LIMIT", completeness: "UNKNOWN" },
+  { capability: "ACADEMIC_RESULT", mode: "BLOCKED_SOURCE_LIMIT", completeness: "UNKNOWN" },
+  { capability: "CLASS_SESSION", mode: "BLOCKED_SOURCE_LIMIT", completeness: "UNKNOWN" },
+  { capability: "EXAM_PERSISTENCE", mode: "BLOCKED_SOURCE_LIMIT", completeness: "UNKNOWN" },
+  { capability: "PREREQUISITE", mode: "BLOCKED_PARTIAL", completeness: "UNKNOWN" },
+];
 const record = (ref: string) => ({ registrationRef: ref,
   course: { code: "TEST101", name: "Môn tổng hợp", credits: 1.5 },
   semester: { academicYearStart: 2025, termCode: "1", code: "2025-1" }, reportedLearningAttempt: 2,
@@ -26,6 +40,28 @@ test("Disabled integration never requests academic source endpoints", async ({ p
   expect(sourceRequests).toBe(0);
 });
 
+for (const state of ["RECONNECTION_REQUIRED", "DISCONNECTED"] as const) {
+  test(`Source state ${state} stops before programs and records`, async ({ page }) => {
+    await createAccountAndLogin(page);
+    const requests: string[] = [];
+    await page.route("**/api/me/connections/phenikaa", (route) => route.fulfill({ json: {
+      status: "CONNECTED", lastAuthenticatedAt: "2026-01-01T00:00:00Z", lastSuccessfulAccessAt: null,
+      lastFailedAccessAt: null, lastFailureCode: null, reconnectionRequired: false,
+    } }));
+    await page.route("**/api/me/academic/source/**", (route) => {
+      const path = new URL(route.request().url()).pathname;
+      requests.push(path);
+      if (path.endsWith("/status")) return route.fulfill({ json: { connectionState: state,
+        lastSuccessfulAccessAt: null, capabilities: backendCapabilities } });
+      return route.abort();
+    });
+    await page.goto("/academic");
+    await expect(page.getByText(state === "RECONNECTION_REQUIRED" ? /Cần kết nối lại nguồn học vụ/ : /Chưa có kết nối học vụ có thể sử dụng/)).toBeVisible();
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatch(/\/status$/);
+  });
+}
+
 for (const width of [1280, 375, 320]) {
   test(`Live read-only records ${width}px`, async ({ page }, testInfo) => {
     const mobile = width < 1024;
@@ -44,8 +80,7 @@ for (const width of [1280, 375, 320]) {
       const url = new URL(route.request().url());
       expect(route.request().method()).toBe("GET");
       if (url.pathname.endsWith("/status")) return route.fulfill({ json: { connectionState: "CONNECTED",
-        lastSuccessfulAccessAt: null, capabilities: ["ACADEMIC_RECORDS", "ACADEMIC_RESULT_DETAIL"].map((capability) =>
-          ({ capability, mode: "LIVE_READ_ONLY", completeness: "UNKNOWN" })) } });
+        lastSuccessfulAccessAt: null, capabilities: backendCapabilities } });
       if (url.pathname.endsWith("/programs")) return route.fulfill({ json: { completeness: "UNKNOWN", programs: [
         { programRef: programOne, label: "Chương trình một" }, { programRef: programTwo, label: "Chương trình hai" },
       ] } });

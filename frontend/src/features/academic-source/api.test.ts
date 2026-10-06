@@ -1,11 +1,40 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { AcademicSourceError, getPrograms, getRecords, getResultDetail, getSourceStatus, sourceErrorMessage } from "./api";
+import { AcademicSourceError, getPrograms, getRecords, getResultDetail, getSourceStatus, hasLiveCapability, sourceErrorMessage } from "./api";
 
 const program = `pr_${"a".repeat(64)}`;
 const detail = `dt_${"b".repeat(64)}`;
 afterEach(() => vi.unstubAllGlobals());
 
 describe("Academic source API", () => {
+  it("parses the complete backend status contract and only enables live academic capabilities", async () => {
+    const status = { connectionState: "CONNECTED", lastSuccessfulAccessAt: null, capabilities: [
+      { capability: "PROFILE", mode: "PERSISTED", completeness: "SOURCE_VERIFIED" },
+      { capability: "CURRICULUM", mode: "PERSISTED_PARTIAL", completeness: "UNKNOWN" },
+      { capability: "COURSE_CATALOG", mode: "PERSISTED_PARTIAL", completeness: "UNKNOWN" },
+      { capability: "ACADEMIC_RECORDS", mode: "LIVE_READ_ONLY", completeness: "UNKNOWN" },
+      { capability: "ACADEMIC_RESULT_DETAIL", mode: "LIVE_READ_ONLY", completeness: "UNKNOWN" },
+      { capability: "SCHEDULE", mode: "ADAPTER_READ_ONLY_NO_API", completeness: "UNKNOWN" },
+      { capability: "EXAMS", mode: "ADAPTER_READ_ONLY_NO_API", completeness: "UNKNOWN" },
+      { capability: "STUDENT_COURSE", mode: "BLOCKED_SOURCE_LIMIT", completeness: "UNKNOWN" },
+      { capability: "ACADEMIC_RESULT", mode: "BLOCKED_SOURCE_LIMIT", completeness: "UNKNOWN" },
+      { capability: "CLASS_SESSION", mode: "BLOCKED_SOURCE_LIMIT", completeness: "UNKNOWN" },
+      { capability: "EXAM_PERSISTENCE", mode: "BLOCKED_SOURCE_LIMIT", completeness: "UNKNOWN" },
+      { capability: "PREREQUISITE", mode: "BLOCKED_PARTIAL", completeness: "UNKNOWN" },
+    ] };
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(status), { status: 200 }));
+    vi.stubGlobal("fetch", fetcher);
+
+    const parsed = await getSourceStatus();
+    expect(fetcher).toHaveBeenCalledWith("/api/me/academic/source/status",
+      expect.objectContaining({ credentials: "same-origin", cache: "no-store" }));
+    expect(parsed.capabilities).toHaveLength(12);
+    expect(hasLiveCapability(parsed, "ACADEMIC_RECORDS")).toBe(true);
+    expect(hasLiveCapability(parsed, "ACADEMIC_RESULT_DETAIL")).toBe(true);
+    expect(hasLiveCapability(parsed, "PROFILE")).toBe(false);
+    expect(hasLiveCapability(parsed, "STUDENT_COURSE")).toBe(false);
+    expect(hasLiveCapability({ ...parsed, connectionState: "RECONNECTION_REQUIRED" }, "ACADEMIC_RECORDS")).toBe(false);
+  });
+
   it("uses same-origin read-only requests and validates opaque references", async () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({ completeness: "UNKNOWN", records: [],
       unknownSemantics: { creditsEarned: "UNKNOWN", includedInGpa: "UNKNOWN", currentResult: "UNKNOWN" } }), { status: 200 }));

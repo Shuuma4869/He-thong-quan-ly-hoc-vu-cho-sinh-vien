@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 const completeness = z.literal("UNKNOWN");
+const statusCompleteness = z.enum(["SOURCE_VERIFIED", "UNKNOWN"]);
 const programRef = z.string().regex(/^pr_[0-9a-f]{64}$/);
 const registrationRef = z.string().regex(/^rg_[0-9a-f]{64}$/);
 const detailRef = z.string().regex(/^dt_[0-9a-f]{64}$/);
@@ -10,7 +11,9 @@ const statusSchema = z.object({
   connectionState: z.enum(["CONNECTED", "RECONNECTION_REQUIRED", "DISCONNECTED"]),
   lastSuccessfulAccessAt: z.string().nullable(),
   capabilities: z.array(z.object({
-    capability: z.string(), mode: z.enum(["PERSISTED_PARTIAL", "LIVE_READ_ONLY", "ADAPTER_READ_ONLY_NO_API"]), completeness,
+    capability: z.string(),
+    mode: z.enum(["PERSISTED", "PERSISTED_PARTIAL", "LIVE_READ_ONLY", "ADAPTER_READ_ONLY_NO_API", "BLOCKED_SOURCE_LIMIT", "BLOCKED_PARTIAL"]),
+    completeness: statusCompleteness,
   })),
 });
 const programsSchema = z.object({

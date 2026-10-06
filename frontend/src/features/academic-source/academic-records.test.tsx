@@ -3,7 +3,7 @@ import { cleanup, render, screen, waitFor, within } from "@testing-library/react
 import userEvent from "@testing-library/user-event";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { AcademicRecords } from "./academic-records";
-import { AcademicSourceError, type Records } from "./api";
+import { AcademicSourceError, type Records, type SourceStatus } from "./api";
 import * as source from "./api";
 import * as sync from "@/features/sync/api";
 
@@ -21,6 +21,14 @@ const registrationTwo = `rg_${"d".repeat(64)}`;
 const detailOne = `dt_${"e".repeat(64)}`;
 const connection: sync.PhenikaaConnection = { status: "CONNECTED", lastAuthenticatedAt: "2026-01-01T00:00:00Z",
   lastSuccessfulAccessAt: null, lastFailedAccessAt: null, lastFailureCode: null, reconnectionRequired: false };
+const sourceStatus: SourceStatus = { connectionState: "CONNECTED", lastSuccessfulAccessAt: null, capabilities: [
+  { capability: "PROFILE", mode: "PERSISTED", completeness: "SOURCE_VERIFIED" },
+  { capability: "CURRICULUM", mode: "PERSISTED_PARTIAL", completeness: "UNKNOWN" },
+  { capability: "ACADEMIC_RECORDS", mode: "LIVE_READ_ONLY", completeness: "UNKNOWN" },
+  { capability: "ACADEMIC_RESULT_DETAIL", mode: "LIVE_READ_ONLY", completeness: "UNKNOWN" },
+  { capability: "STUDENT_COURSE", mode: "BLOCKED_SOURCE_LIMIT", completeness: "UNKNOWN" },
+  { capability: "PREREQUISITE", mode: "BLOCKED_PARTIAL", completeness: "UNKNOWN" },
+] };
 const record: Records["records"][number] = {
   registrationRef: registrationOne, course: { code: "TEST101", name: "Môn tổng hợp", credits: 1.5 },
   semester: { academicYearStart: 2025, termCode: "1", code: "2025-1" }, reportedLearningAttempt: 2,
@@ -38,8 +46,7 @@ function show() {
 
 beforeEach(() => {
   vi.mocked(sync.getPhenikaaConnection).mockResolvedValue(connection);
-  vi.mocked(source.getSourceStatus).mockResolvedValue({ connectionState: "CONNECTED", lastSuccessfulAccessAt: null,
-    capabilities: ["ACADEMIC_RECORDS", "ACADEMIC_RESULT_DETAIL"].map((capability) => ({ capability, mode: "LIVE_READ_ONLY", completeness: "UNKNOWN" })) });
+  vi.mocked(source.getSourceStatus).mockResolvedValue(sourceStatus);
   vi.mocked(source.getPrograms).mockResolvedValue({ completeness: "UNKNOWN", programs: [
     { programRef: programOne, label: "Chương trình một" }, { programRef: programTwo, label: "Chương trình hai" },
   ] });
@@ -65,6 +72,16 @@ describe("Live academic records", () => {
     show();
     expect(await screen.findByText(/Khả năng đọc kết quả trực tiếp hiện không khả dụng/)).toBeInTheDocument();
     expect(source.getPrograms).not.toHaveBeenCalled();
+  });
+
+  it.each(["RECONNECTION_REQUIRED", "DISCONNECTED"] as const)("stops before programs when source status changes to %s", async (state) => {
+    vi.mocked(source.getSourceStatus).mockResolvedValue({ ...sourceStatus, connectionState: state });
+    show();
+    expect(await screen.findByText(state === "RECONNECTION_REQUIRED" ? /Cần kết nối lại nguồn học vụ/ : /Chưa có kết nối học vụ có thể sử dụng/)).toBeInTheDocument();
+    expect(screen.queryByText("Đã kết nối nguồn học vụ.")).not.toBeInTheDocument();
+    expect(source.getSourceStatus).toHaveBeenCalledTimes(1);
+    expect(source.getPrograms).not.toHaveBeenCalled();
+    expect(source.getRecords).not.toHaveBeenCalled();
   });
 
   it("preserves duplicate observations and unknown semantics without computing a result", async () => {

@@ -132,10 +132,12 @@ export function AcademicRecords({ userId }: { userId: string }) {
         : !connection.data ? <p>Không khả dụng: tích hợp Phenikaa chưa được bật.</p>
         : connection.data.status === "DISCONNECTED" ? <p>Chưa có kết nối học vụ có thể sử dụng.</p>
         : connection.data.status === "RECONNECTION_REQUIRED" ? <p>Cần kết nối lại nguồn học vụ qua quy trình hiện có.</p>
-        : <><p>Đã kết nối nguồn học vụ.</p>
+        : <>
           {status.isPending ? <p role="status">Đang kiểm tra khả năng đọc kết quả…</p>
             : status.isError ? <ReadError error={status.error} retry={() => void status.refetch()} />
-            : recordsEnabled ? <p className="text-sm text-muted">Kết quả học tập: đọc trực tiếp, chỉ để xem; độ đầy đủ chưa được xác nhận.</p>
+            : status.data.connectionState === "RECONNECTION_REQUIRED" ? <p>Cần kết nối lại nguồn học vụ qua quy trình hiện có.</p>
+            : status.data.connectionState === "DISCONNECTED" ? <p>Chưa có kết nối học vụ có thể sử dụng.</p>
+            : recordsEnabled ? <><p>Đã kết nối nguồn học vụ.</p><p className="text-sm text-muted">Kết quả học tập: đọc trực tiếp, chỉ để xem; độ đầy đủ chưa được xác nhận.</p></>
             : <p>Khả năng đọc kết quả trực tiếp hiện không khả dụng.</p>}</>}
     </section>
     {connected && recordsEnabled && <section className={panel} aria-labelledby="programs-title">
