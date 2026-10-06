@@ -20,11 +20,14 @@ public final class AccountDtos {
             @Email @Size(max = 254) String notificationEmail,
             @NotBlank @Size(max = 64) String timezone,
             @NotBlank @Pattern(regexp = "vi-VN|en-US") String locale,
-            @NotNull UserPreferences.Theme theme) {}
+            @NotNull UserPreferences.Theme theme,
+            Boolean syncEmailAlertsEnabled) {}
 
-    public record SettingsView(String notificationEmail, String timezone, String locale, UserPreferences.Theme theme) {
+    public record SettingsView(String notificationEmail, String timezone, String locale, UserPreferences.Theme theme,
+                               Instant notificationEmailVerifiedAt, boolean syncEmailAlertsEnabled) {
         public static SettingsView from(UserPreferences settings) {
-            return new SettingsView(settings.getNotificationEmail(), settings.getTimezone(), settings.getLocale(), settings.getTheme());
+            return new SettingsView(settings.getNotificationEmail(), settings.getTimezone(), settings.getLocale(),
+                    settings.getTheme(), settings.getNotificationEmailVerifiedAt(), settings.isSyncEmailAlertsEnabled());
         }
     }
 

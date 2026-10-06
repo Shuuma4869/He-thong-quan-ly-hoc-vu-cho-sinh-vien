@@ -65,6 +65,14 @@ springdoc:
     path: /swagger-ui.html
 
 ams:
+  notification:
+    email:
+      enabled: ${AMS_NOTIFICATION_EMAIL_ENABLED:false}
+      api-key: ${RESEND_API_KEY:}
+      from: ${AMS_NOTIFICATION_EMAIL_FROM:}
+      worker-enabled: ${AMS_NOTIFICATION_EMAIL_WORKER_ENABLED:true}
+      poll-interval: ${AMS_NOTIFICATION_EMAIL_POLL_INTERVAL:10s}
+      cleanup-interval: ${AMS_NOTIFICATION_EMAIL_CLEANUP_INTERVAL:1h}
   google-calendar:
     enabled: ${AMS_GOOGLE_CALENDAR_ENABLED:false}
     client-id: ${AMS_GOOGLE_CLIENT_ID:}

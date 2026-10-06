@@ -13,6 +13,9 @@ public class UserPreferences {
     private UUID userId;
     @Column(length = 254)
     private String notificationEmail;
+    private Instant notificationEmailVerifiedAt;
+    @Column(nullable = false)
+    private boolean syncEmailAlertsEnabled;
     @Column(nullable = false, length = 64)
     private String timezone = "Asia/Ho_Chi_Minh";
     @Column(nullable = false, length = 16)
@@ -26,15 +29,29 @@ public class UserPreferences {
     protected UserPreferences() {}
     public UserPreferences(UUID userId) { this.userId = userId; }
 
-    public void update(String notificationEmail, String timezone, String locale, Theme theme) {
+    public boolean update(String notificationEmail, String timezone, String locale, Theme theme,
+                          boolean syncEmailAlertsEnabled) {
+        boolean changed = !java.util.Objects.equals(this.notificationEmail, notificationEmail);
+        if (changed) {
+            this.notificationEmailVerifiedAt = null;
+            this.syncEmailAlertsEnabled = false;
+        }
+        if (syncEmailAlertsEnabled && (changed || notificationEmailVerifiedAt == null))
+            throw new IllegalStateException("Notification email is not verified");
         this.notificationEmail = notificationEmail;
         this.timezone = timezone;
         this.locale = locale;
         this.theme = theme;
+        this.syncEmailAlertsEnabled = syncEmailAlertsEnabled;
         this.updatedAt = Instant.now();
+        return changed;
     }
 
+    public void verify(Instant now) { this.notificationEmailVerifiedAt = now; this.updatedAt = now; }
+
     public String getNotificationEmail() { return notificationEmail; }
+    public Instant getNotificationEmailVerifiedAt() { return notificationEmailVerifiedAt; }
+    public boolean isSyncEmailAlertsEnabled() { return syncEmailAlertsEnabled; }
     public String getTimezone() { return timezone; }
     public String getLocale() { return locale; }
     public Theme getTheme() { return theme; }
