@@ -10,6 +10,7 @@ import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 import vn.edu.phenikaa.ams.academic.application.CatalogPageRequest;
 import vn.edu.phenikaa.ams.academic.application.CurriculumQueryService.*;
+import vn.edu.phenikaa.ams.academic.application.CurriculumSelectionService.SelectedCurriculumView;
 import vn.edu.phenikaa.ams.academic.domain.CurriculumCourse.Requirement;
 
 @Repository
@@ -30,6 +31,17 @@ public class CurriculumReadRepository {
     public Optional<CurriculumView> curriculum(UUID profile, UUID id) {
         return jdbc.query(CURRICULA + " and c.id = :id", new MapSqlParameterSource("profile", profile).addValue("id", id),
                 (r, n) -> curriculum(r)).stream().findFirst();
+    }
+
+    public Optional<SelectedCurriculumView> selectedCurriculum(UUID userId) {
+        return jdbc.query("""
+                select c.id, c.code, c.name, c.cohort, c.revision, c.minimum_credits
+                from student_profile p join curriculum c on c.profile_id = p.id and c.id = p.curriculum_id
+                where p.user_id = :userId
+                """, new MapSqlParameterSource("userId", userId),
+                (r, n) -> new SelectedCurriculumView(uuid(r, "id"), r.getString("code"), r.getString("name"),
+                        r.getString("cohort"), r.getString("revision"), r.getBigDecimal("minimum_credits")))
+                .stream().findFirst();
     }
 
     public List<GroupView> groups(UUID profile, UUID curriculum, CatalogPageRequest page) {

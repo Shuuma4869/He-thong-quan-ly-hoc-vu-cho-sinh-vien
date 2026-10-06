@@ -7,7 +7,7 @@ export default defineConfig({
   use: { baseURL: "http://localhost:3000", trace: "on-first-retry" },
   webServer: [
     {
-      command: `${process.platform === "win32" ? "mvnw.cmd" : "./mvnw"} --batch-mode test-compile spring-boot:test-run "-Dspring-boot.run.arguments=--spring.data.redis.password="`,
+      command: `${process.platform === "win32" ? "mvnw.cmd" : "./mvnw"} --batch-mode test-compile spring-boot:test-run "-Dspring-boot.run.arguments=--spring.data.redis.password= --ams.e2e-fixtures.enabled=true"`,
       cwd: "../backend",
       url: "http://localhost:8080/api/health",
       timeout: 180_000,
