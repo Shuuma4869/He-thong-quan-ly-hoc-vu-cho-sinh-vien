@@ -73,7 +73,8 @@ public class ApiExceptionHandler {
     @ExceptionHandler(AcademicSourceQueryException.class)
     ResponseEntity<ProblemDetail> handleAcademicSource(AcademicSourceQueryException exception) {
         var status = switch (exception.code()) {
-            case CONNECTION_NOT_FOUND, RECONNECTION_REQUIRED -> HttpStatus.CONFLICT;
+            case CONNECTION_NOT_FOUND, RECONNECTION_REQUIRED, CURRICULUM_SELECTION_REQUIRED,
+                 SOURCE_PROGRESS_UNAVAILABLE -> HttpStatus.CONFLICT;
             case INVALID_SOURCE_REFERENCE -> HttpStatus.NOT_FOUND;
             case INVALID_SOURCE_RANGE -> HttpStatus.BAD_REQUEST;
             case SOURCE_TIMEOUT -> HttpStatus.GATEWAY_TIMEOUT;
@@ -83,6 +84,8 @@ public class ApiExceptionHandler {
         var detail = switch (exception.code()) {
             case CONNECTION_NOT_FOUND -> "Chưa có kết nối học vụ có thể sử dụng.";
             case RECONNECTION_REQUIRED -> "Phiên học vụ đã hết hạn; cần kết nối lại.";
+            case CURRICULUM_SELECTION_REQUIRED -> "Bạn cần chọn chương trình theo dõi trước khi đọc tổng hợp tích lũy.";
+            case SOURCE_PROGRESS_UNAVAILABLE -> "Chưa thể đối chiếu chương trình theo dõi với dữ liệu tổng hợp từ nguồn.";
             case INVALID_SOURCE_REFERENCE -> "Không tìm thấy dữ liệu học vụ được yêu cầu.";
             case INVALID_SOURCE_RANGE -> "Khoảng ngày phải hợp lệ và không vượt quá 31 ngày.";
             case SOURCE_TIMEOUT -> "Cổng học vụ phản hồi quá chậm.";

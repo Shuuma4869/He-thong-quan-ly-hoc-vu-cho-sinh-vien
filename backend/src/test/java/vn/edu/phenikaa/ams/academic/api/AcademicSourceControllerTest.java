@@ -38,6 +38,7 @@ class AcademicSourceControllerTest {
     @Test void requiresAmsAuthenticationForAllReadEndpoints() throws Exception {
         mvc.perform(get("/api/me/academic/source/status")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/me/academic/source/programs")).andExpect(status().isUnauthorized());
+        mvc.perform(get("/api/me/academic/source/progress-summary")).andExpect(status().isUnauthorized());
         mvc.perform(get("/api/me/academic/source/records").param("programRef", "pr_test"))
                 .andExpect(status().isUnauthorized());
         mvc.perform(get("/api/me/academic/source/records/dt_test/detail").param("programRef", "pr_test"))
@@ -48,6 +49,31 @@ class AcademicSourceControllerTest {
         mvc.perform(get("/api/me/academic/source/exams").param("periodRef", "ep_test"))
                 .andExpect(status().isUnauthorized());
         verifyNoInteractions(queries);
+    }
+
+    @Test void progressSummaryExposesOnlyAmsSelectionAndSourceReportedMetrics() throws Exception {
+        var id = java.util.UUID.randomUUID();
+        when(queries.progressSummary(principal.getUserId())).thenReturn(new ProgressSummaryView(
+                "SOURCE_REPORTED_LIVE_READ_ONLY", "UNKNOWN", "USER_SELECTED_AMS",
+                new TrackedCurriculumView(id, "TEST", "Chương trình kiểm thử"),
+                new AccumulatedSummaryView(new BigDecimal("3.25"), new BigDecimal("8.10"), new BigDecimal("72"))));
+        String body = mvc.perform(get("/api/me/academic/source/progress-summary").with(user(principal)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.mode").value("SOURCE_REPORTED_LIVE_READ_ONLY"))
+                .andExpect(jsonPath("$.curriculum.id").value(id.toString()))
+                .andExpect(jsonPath("$.summary.sourceAccumulatedCredits").value(72))
+                .andReturn().getResponse().getContentAsString();
+        assertThat(body).doesNotContain("sourceProgramId", "profileId", "learnerId", "rsDiemTrungBinhChung");
+    }
+
+    @Test void progressSummaryUsesSafe409Errors() throws Exception {
+        for (var code : new AcademicSourceQueryException.Code[] {
+                AcademicSourceQueryException.Code.CURRICULUM_SELECTION_REQUIRED,
+                AcademicSourceQueryException.Code.SOURCE_PROGRESS_UNAVAILABLE }) {
+            doThrow(new AcademicSourceQueryException(code)).when(queries).progressSummary(principal.getUserId());
+            mvc.perform(get("/api/me/academic/source/progress-summary").with(user(principal)))
+                    .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value(code.name()));
+        }
     }
 
     @Test void returnsOwnReadOnlyObservationWithoutInternalFields() throws Exception {

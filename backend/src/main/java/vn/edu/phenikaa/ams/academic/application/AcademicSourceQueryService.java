@@ -24,10 +24,13 @@ public class AcademicSourceQueryService {
     private static final ZoneId SOURCE_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
     private final AcademicPortalClient portal;
     private final AcademicReadGate gate;
+    private final TrackedCurriculumResolver trackedCurricula;
 
-    public AcademicSourceQueryService(AcademicPortalClient portal, AcademicReadGate gate) {
+    public AcademicSourceQueryService(AcademicPortalClient portal, AcademicReadGate gate,
+                                      TrackedCurriculumResolver trackedCurricula) {
         this.portal = portal;
         this.gate = gate;
+        this.trackedCurricula = trackedCurricula;
     }
 
     public SourceStatus status(UUID userId) {
@@ -39,6 +42,7 @@ public class AcademicSourceQueryService {
                     new CapabilitySupport("COURSE_CATALOG", "PERSISTED_PARTIAL", "UNKNOWN"),
                     new CapabilitySupport("ACADEMIC_RECORDS", "LIVE_READ_ONLY", "UNKNOWN"),
                     new CapabilitySupport("ACADEMIC_RESULT_DETAIL", "LIVE_READ_ONLY", "UNKNOWN"),
+                    new CapabilitySupport("ACADEMIC_PROGRESS_SUMMARY", "LIVE_READ_ONLY", "UNKNOWN"),
                     new CapabilitySupport("SCHEDULE", "LIVE_READ_ONLY", "UNKNOWN"),
                     new CapabilitySupport("EXAMS", "LIVE_READ_ONLY", "UNKNOWN"),
                     new CapabilitySupport("STUDENT_COURSE", "BLOCKED_SOURCE_LIMIT", "UNKNOWN"),
@@ -140,6 +144,37 @@ public class AcademicSourceQueryService {
         });
     }
 
+    public ProgressSummaryView progressSummary(UUID userId) {
+        return read(userId, AcademicReadGate.Capability.PROGRESS_SUMMARY, connection -> {
+            var generation = portal.connectionInfo(userId).authenticatedAt();
+            var selected = trackedCurricula.resolve(userId)
+                    .orElseThrow(() -> new AcademicSourceQueryException(CURRICULUM_SELECTION_REQUIRED));
+            if (selected.sourceProgramId() == null)
+                throw new AcademicSourceQueryException(SOURCE_PROGRESS_UNAVAILABLE);
+            var matches = portal.fetchAcademicPrograms(userId, connection).stream()
+                    .filter(program -> selected.sourceProgramId().equals(program.sourceId())).toList();
+            if (matches.isEmpty()) throw new AcademicSourceQueryException(SOURCE_PROGRESS_UNAVAILABLE);
+            if (matches.size() != 1) throw new AcademicSourceQueryException(SOURCE_DATA_INCOMPLETE);
+            var program = matches.getFirst();
+            var observation = portal.fetchAcademicProgressSummary(userId, connection, program);
+            if (observation == null || !program.sourceId().equals(observation.program().sourceId()))
+                throw new AcademicSourceQueryException(SOURCE_DATA_INCOMPLETE);
+            var current = trackedCurricula.resolve(userId)
+                    .orElseThrow(() -> new AcademicSourceQueryException(SOURCE_PROGRESS_UNAVAILABLE));
+            if (!selected.curriculumId().equals(current.curriculumId())
+                    || !selected.sourceProgramId().equals(current.sourceProgramId()))
+                throw new AcademicSourceQueryException(SOURCE_PROGRESS_UNAVAILABLE);
+            var connectionNow = portal.connectionInfo(userId);
+            if (connectionNow.state() != AcademicPortalClient.ConnectionInfo.State.CONNECTED
+                    || !java.util.Objects.equals(generation, connectionNow.authenticatedAt()))
+                throw new AcademicSourceQueryException(RECONNECTION_REQUIRED);
+            return new ProgressSummaryView("SOURCE_REPORTED_LIVE_READ_ONLY", "UNKNOWN", "USER_SELECTED_AMS",
+                    new TrackedCurriculumView(selected.curriculumId(), selected.code(), selected.name()),
+                    new AccumulatedSummaryView(observation.cumulativeAverageScale4(),
+                            observation.cumulativeAverageScale10(), observation.sourceAccumulatedCredits()));
+        });
+    }
+
     public DetailView detail(UUID userId, String programRef, String detailRef) {
         validateReference(programRef, "program");
         validateReference(detailRef, "detail");
@@ -207,6 +242,8 @@ public class AcademicSourceQueryService {
             if (info.state() != AcademicPortalClient.ConnectionInfo.State.CONNECTED)
                 throw new AcademicSourceQueryException(CONNECTION_NOT_FOUND);
             return operation.apply(portal.currentConnection(userId));
+        } catch (AcademicProgressSummaryUnavailable ex) {
+            throw new AcademicSourceQueryException(SOURCE_PROGRESS_UNAVAILABLE);
         } catch (AcademicPortalException ex) { throw map(userId, ex); }
     }
 
@@ -263,6 +300,17 @@ public class AcademicSourceQueryService {
     public record CapabilitySupport(String capability, String mode, String completeness) {}
     public record ProgramsView(String completeness, List<ProgramView> programs) {}
     public record ProgramView(String programRef, String label) {}
+    public record ProgressSummaryView(String mode, String completeness, String selectionMode,
+                                      TrackedCurriculumView curriculum, AccumulatedSummaryView summary) {
+        @Override public String toString() { return "ProgressSummaryView[redacted]"; }
+    }
+    public record TrackedCurriculumView(UUID id, String code, String name) {
+        @Override public String toString() { return "TrackedCurriculumView[redacted]"; }
+    }
+    public record AccumulatedSummaryView(BigDecimal cumulativeAverageScale4, BigDecimal cumulativeAverageScale10,
+                                         BigDecimal sourceAccumulatedCredits) {
+        @Override public String toString() { return "AccumulatedSummaryView[redacted]"; }
+    }
     public record ScheduleView(String completeness, String identityScope, String zone, LocalDate from,
                                LocalDate through, List<ScheduleEntryView> entries) {}
     public record ScheduleEntryView(String courseName, LocalDate date, LocalTime startsAt, LocalTime endsAt,

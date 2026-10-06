@@ -138,6 +138,13 @@ public class PhenikaaAcademicPortalClient implements AcademicPortalClient {
         return accessRead(userId, connectionId, material -> http.fetchAcademicRecords(academicSession(material), program));
     }
 
+    @Override @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public AcademicProgressSummaryObservation fetchAcademicProgressSummary(UUID userId, StudentConnectionId connectionId,
+                                                                          AcademicProgram program) {
+        return accessRead(userId, connectionId,
+                material -> http.fetchAcademicProgressSummary(academicSession(material), program));
+    }
+
     private static PhenikaaSession academicSession(PhenikaaSessionMaterial material) {
         if (material.academic() == null) throw new AcademicPortalException(CONNECTION_UNAVAILABLE);
         return material.academic();
@@ -176,6 +183,10 @@ public class PhenikaaAcademicPortalClient implements AcademicPortalClient {
             var failure = translate(ex);
             recordRead(userId, id, opened.authenticatedAt(), failure.code());
             throw failure;
+        } catch (AcademicProgressSummaryUnavailable ex) {
+            if (!recordRead(userId, id, opened.authenticatedAt(), null))
+                throw new AcademicPortalException(CONNECTION_UNAVAILABLE);
+            throw ex;
         }
     }
 

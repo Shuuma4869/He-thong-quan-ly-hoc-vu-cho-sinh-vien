@@ -3,6 +3,7 @@ package vn.edu.phenikaa.ams.academic.infrastructure.phenikaa;
 import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import vn.edu.phenikaa.ams.academic.infrastructure.StudentProfileRepository;
+import vn.edu.phenikaa.ams.academic.infrastructure.CurriculumReadRepository;
 import vn.edu.phenikaa.ams.user.infrastructure.UserRepository;
 import static org.assertj.core.api.Assertions.*;
 import static org.mockito.Mockito.mock;
@@ -17,6 +18,7 @@ class PhenikaaConfigurationTest {
             .withBean(PhenikaaConnectionRepository.class, () -> mock(PhenikaaConnectionRepository.class))
             .withBean(UserRepository.class, () -> mock(UserRepository.class))
             .withBean(StudentProfileRepository.class, () -> mock(StudentProfileRepository.class))
+            .withBean(CurriculumReadRepository.class, () -> mock(CurriculumReadRepository.class))
             .withBean(jakarta.persistence.EntityManager.class, () -> mock(jakarta.persistence.EntityManager.class))
             .withBean(org.springframework.jdbc.core.JdbcTemplate.class, () -> mock(org.springframework.jdbc.core.JdbcTemplate.class))
             .withBean(org.springframework.data.redis.core.StringRedisTemplate.class,

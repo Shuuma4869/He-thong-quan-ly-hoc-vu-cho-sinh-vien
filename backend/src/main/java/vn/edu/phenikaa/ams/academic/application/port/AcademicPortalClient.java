@@ -34,6 +34,9 @@ public interface AcademicPortalClient {
     AcademicRecordObservation fetchAcademicRecords(UUID currentUserId, StudentConnectionId connectionId,
                                                     AcademicProgram program);
 
+    AcademicProgressSummaryObservation fetchAcademicProgressSummary(UUID currentUserId, StudentConnectionId connectionId,
+                                                                    AcademicProgram program);
+
     AcademicResultDetail fetchAcademicResultDetail(UUID currentUserId, StudentConnectionId connectionId,
                                                    AcademicProgram program, String sourceResultId);
 
