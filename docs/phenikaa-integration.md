@@ -8,6 +8,55 @@ Tài liệu này ghi lại các lượt kiểm tra cổng QLĐT Phenikaa từ 18
 
 Phạm vi của phần Phase 3 bên dưới là khảo sát. Khi đó adapter chưa gọi HTTP hoặc nhập dữ liệu; không dùng nhận định lịch sử này để thay cho kết quả Phase 4A/4B ở cuối tài liệu.
 
+## Phase 15A: sinh viên có thể tự kết nối Phenikaa với AMS không?
+
+**Kết luận ngày 06/10/2026: chưa thể mở chức năng tự kết nối trên web.** AMS đã đọc được dữ liệu bằng một phiên được cấp qua thao tác nội bộ có kiểm soát; đó là bằng chứng cho phần *đọc dữ liệu sau khi có phiên*, không phải bằng chứng rằng AMS có quyền hoặc có cách an toàn để tự lấy phiên cho mỗi sinh viên. Hiện chưa xác minh được một luồng ủy quyền của Phenikaa trả kết quả về AMS. Vì vậy `SELF_SERVICE_PHENIKAA_CONNECTION = BLOCKED_SOURCE_AUTH`, không triển khai form đăng nhập, callback, nút kết nối hay cách dán token trong phase này. Các tính năng hiện có vẫn dùng được với kết nối được cấp hợp lệ; đây không phải kết luận rằng toàn bộ AMS bị chặn.
+
+### Điều đã xác nhận và điều mới chỉ quan sát
+
+**CONFIRMED — từ code AMS:** `GET /api/me/connections/phenikaa` chỉ trả trạng thái. `PhenikaaAcademicPortalClient.connect(...)` không nằm sau controller công khai: nó nhận `PhenikaaSessionMaterial` từ quy trình cấp phiên nội bộ. Vật liệu đó gồm Bearer, cookie tùy chọn, khóa đọc phản hồi `iM`, ID người học và các mã chức năng cho từng khả năng. Khi có vật liệu hợp lệ, adapter kiểm tra hồ sơ, mã hóa phiên rồi gắn kết nối với UUID user AMS. API đọc học vụ sau đó dùng phiên đã cấp; đăng nhập AMS hoặc đăng nhập Microsoft riêng cho AMS không tự tạo ra phiên này.
+
+**CONFIRMED — nguồn công khai:** [Hướng dẫn sử dụng QLĐT của trường](https://qldtbeta.phenikaa-uni.edu.vn/upload/ApisTinTuc/Doc/FFE4536FBE404B8BA8157479DDF93154_202409190912247070_20220905huong-dan-si.pdf) chỉ sinh viên tới `/congsinhvien/login.aspx` và nút đăng nhập bằng tài khoản Microsoft do trường cấp. [Trang hỗ trợ CNTT của trường](https://it-support.phenikaa-uni.edu.vn/trang-chu/hdsd/Huong-dan-dang-nhap-Office-365-CANVAS-QLDTbeta-Ms-Team) cũng hướng dẫn đăng nhập các dịch vụ, không trình bày quy trình đăng ký ứng dụng bên thứ ba. Không tìm thấy tài liệu công khai về OAuth client/scopes cho AMS, API ủy quyền bên thứ ba hay điều khoản tích hợp. Đây là **NO_EVIDENCE**, không phải khẳng định nhà trường không có cơ chế hoặc cấm tích hợp.
+
+**OBSERVED — metadata trang công khai ngày 06/10/2026, không đăng nhập:** cả `/congsinhvien/login.aspx` và `/conggiangvien/login.aspx` đều có liên kết tới Microsoft authorization endpoint với `response_type=code`, `response_mode=form_post`, scope `openid profile`. `redirect_uri` của mỗi liên kết trỏ về đúng trang login tương ứng trên `qldtbeta.phenikaa-uni.edu.vn`, **không phải AMS**. Chỉ đọc host, path, tên tham số và các giá trị flow vừa nêu; không lưu/in `client_id`, code, cookie hoặc nội dung trang có thể chứa phiên. Liên kết HTML tĩnh này không chứa `state` hay `code_challenge`; điều đó không chứng minh toàn bộ hệ thống thiếu cơ chế bảo vệ, vì chưa quan sát các bước xử lý sau đó. Phần khảo sát cũ dùng đường `/conggiangvien` với một tài khoản vào được khu vực sinh viên; chưa chứng minh hai đường login có cùng lifecycle cho mọi sinh viên.
+
+**OBSERVED — lượt đăng nhập tương tác trước đây, không lặp lại trong Phase 15A:** tài liệu ở mục 3 và Phase 4A ghi nhận trình duyệt đi qua Microsoft/SSO rồi request học vụ mang Bearer và cookie. Sau tải lại/chuyển trang ngắn, Bearer quan sát được vẫn như cũ. Một lượt đọc lịch bằng Java với phiên đã được chủ tài khoản cấp qua helper local thành công; bỏ cookie vẫn đọc được lịch trong đúng mẫu đó, bỏ Bearer thì bị từ chối. Không suy rộng kết quả này sang mọi API hoặc coi helper nghiên cứu là sản phẩm kết nối web. Phase 15A không dùng tài khoản tương tác mới, không sao chép phiên từ DevTools và không kiểm tra token thật.
+
+**UNKNOWN:** bước nào tạo Bearer, `iM`, mã chức năng và ID người học; liệu portal có endpoint ủy quyền/handoff chính thức; tuổi thọ và cơ chế gia hạn phiên; logout Microsoft hoặc portal có thu hồi Bearer đang dùng không; một OAuth app độc lập của AMS có được cấp quyền đọc QLĐT không. HTTP 401 hoặc redirect về login được adapter hiểu là cần kết nối lại, nhưng đó là cách xử lý lỗi đã biết, không phải phép đo thời hạn phiên. `session_expires_at` vẫn để null.
+
+**BLOCKED:** đường đi đã thấy là người dùng mở trang login của portal → chọn Microsoft → Microsoft được yêu cầu gửi authorization code về chính trang login của portal (`form_post`) → sau đăng nhập, các request học vụ của portal có Bearer và ngữ cảnh nguồn. Chưa thấy bước ở giữa tạo các giá trị phiên, và **không có bước đã xác minh nào chuyển code hoặc phiên từ portal sang AMS**. Tải lại và chuyển trang ngắn đã được thử trong khảo sát trước; logout chỉ quan sát được bước chuyển sang Microsoft logout, chưa thử phiên cũ sau logout. Chưa chờ hết hạn tự nhiên. Do đó `FIRST_CONNECT` và `RECONNECT` tự phục vụ đều bị chặn, còn thời hạn phiên và hiệu lực của logout vẫn chưa biết.
+
+### Ranh giới Microsoft và tài khoản nguồn
+
+Liên kết Microsoft đang thấy là authorization-code/OIDC **cho luồng của portal**: Microsoft gửi kết quả về redirect URI của portal. Theo [quy tắc redirect URI của Microsoft](https://learn.microsoft.com/en-us/entra/identity-platform/reply-url), URI nhận kết quả phải thuộc đăng ký của ứng dụng; [authorization code cũng phải được đổi bằng cùng redirect URI đã dùng lúc xin code](https://learn.microsoft.com/en-us/entra/identity-platform/v2-oauth2-auth-code-flow). Vì vậy AMS không được lấy `client_id` của portal, đổi redirect sang AMS, dùng code của portal hoặc giả làm portal. Ngay cả khi AMS đăng ký OAuth riêng và đăng nhập Microsoft thành công, AMS mới có kết quả xác thực dành cho **AMS**; chưa có bằng chứng Phenikaa sẽ đổi kết quả đó thành Bearer/cookie/`iM` của portal. Đây là suy luận từ ranh giới giao thức và metadata quan sát, không phải kết quả thử đăng ký AMS với trường.
+
+`encrypted_subject` hiện được tạo từ `learnerId` trong vật liệu phiên, mã hóa riêng và giữ lại khi disconnect. Lần cấp lại so sánh ID này với bản đã lưu; khác ID thì từ chối, không dựa vào tên hoặc email. Ràng buộc này hoạt động **sau khi đã có vật liệu nguồn đáng tin cậy**. Một flow tự kết nối tương lai còn phải chứng minh ID người học do nguồn xác thực trả về thuộc đúng tài khoản vừa đăng nhập, ổn định qua reconnect, và không thể do browser tự chọn. Chưa có bằng chứng đó nên cả kết nối lần đầu và tự kết nối lại đều chưa sẵn sàng.
+
+### Đánh giá các cách kết nối
+
+Ở bảng này, “có thể đọc” không đồng nghĩa “được phép cấp phiên”. `UNVERIFIED` nghĩa là chưa có contract hoặc thử nghiệm hợp lệ để kết luận hỗ trợ; không có nghĩa là chắc chắn không thể làm.
+
+| Cách làm | Khả thi về kỹ thuật | An toàn cho sản phẩm | Chỉ web | Chính thức/đã xác minh | Quyết định |
+| --- | --- | --- | --- | --- | --- |
+| AMS đăng ký OAuth/OIDC riêng với Microsoft | `UNVERIFIED` cho việc đổi đăng nhập AMS thành phiên QLĐT | Có thể nếu được đăng ký/ủy quyền đúng | Có | Chưa thấy quyền API/handoff của Phenikaa | `NEEDS_OFFICIAL_REGISTRATION` |
+| Portal redirect hoặc handoff một lần về AMS | `UNVERIFIED`: chưa thấy endpoint/contract | Có thể nếu nguồn cấp, ràng buộc user và giới hạn quyền | Có | Chưa thấy | `BLOCKED_SOURCE_AUTH` |
+| Backend tự xác thực server-to-server | `UNVERIFIED` cho việc tự lấy phiên; đọc bằng phiên được cấp đã thử | Chỉ khi nguồn cấp quyền chính thức | Có | Chưa thấy cơ chế cấp phiên | `BLOCKED_SOURCE_AUTH` |
+| Chuyển phiên từ browser sang AMS | `SUPPORTED` trong một lượt nghiên cứu local, không phải flow web | Không chấp nhận như cách người dùng tự kết nối sản phẩm | Không theo flow web thông thường | Không | `REJECTED_SECURITY` |
+| Browser extension/helper | `UNVERIFIED`: chưa đánh giá triển khai | Rủi ro quyền truy cập phiên/trình duyệt | Không | Không | Ngoài phạm vi; không phát triển |
+| Desktop/local companion | `UNVERIFIED`: chưa đánh giá triển khai | Cần mô hình phân phối, cập nhật và bảo vệ riêng | Không | Không | Ngoài phạm vi; không phát triển |
+| Dán token/cookie thủ công hoặc nhập mật khẩu vào AMS | `REJECTED_SECURITY`: nhập chuỗi không phải ủy quyền hợp lệ | Không | Có giao diện web nhưng không an toàn | Không | `REJECTED_SECURITY` |
+
+**REJECTED_SECURITY:** không thêm ô dán Bearer/cookie, form nhận mật khẩu/OTP, công cụ đọc cookie/trình duyệt, hoặc tự submit form Phenikaa. Không lấy client ID/secret của portal làm của AMS, không bỏ qua MFA, CAPTCHA, SSO, PKCE, `state` hoặc kiểm soát truy cập. Extension/desktop không phải lối thoát mặc định cho một sản phẩm web.
+
+### Cần bằng chứng gì để quyết định lại?
+
+1. Hỏi đơn vị quản lý QLĐT/SSO của Phenikaa hoặc nhà cung cấp portal xem có **quy trình đăng ký ứng dụng bên thứ ba** và quyền đọc dữ liệu cho từng sinh viên hay không. Cần tài liệu về client ownership, redirect URI, scope, consent, điều khoản sử dụng và cách thu hồi quyền. Chưa gửi yêu cầu liên hệ nào trong phase này.
+2. Nếu có handoff chính thức, cần sơ đồ authorize → callback/one-time code → server exchange, nguồn phát hành và audience của credential, cách lấy `iM`/mã chức năng, giới hạn quyền và thời hạn. AMS chỉ nhận kết quả dành cho chính client AMS, không nhận code của portal.
+3. Cần một định danh người học được nguồn xác thực để nối lần cấp đầu và reconnect cùng tài khoản; xác minh cả trường hợp user cố đổi tài khoản trường. Cần biết disconnect ở AMS có thể revoke phiên nguồn hay chỉ xóa phiên local.
+4. Chỉ sau khi các điểm trên được xác minh mới lập contract Phase 15B cho CSRF, `state`/PKCE nếu áp dụng, chống replay, rate limit, lỗi/reconnect/disconnect và test. **Phase 15A không triển khai Phase 15B.**
+
+Nếu trường chưa cung cấp contract, hướng an toàn là giữ việc cấp kết nối có kiểm soát và tiếp tục phát triển các chức năng AMS không phụ thuộc tự kết nối, chẳng hạn chọn chương trình hiện tại hoặc nền theo dõi tiến độ từ dữ liệu đã được phép lưu. Không gọi một lần đăng nhập Microsoft độc lập là “đã kết nối Phenikaa”.
+
 ## 1. Những điều cần nắm trước
 
 Cổng QLĐT có API cung cấp dữ liệu cho chính giao diện của nó. Đã quan sát được các yêu cầu lấy hồ sơ, lịch học, lịch thi, điểm và chương trình đào tạo sau khi chủ tài khoản tự đăng nhập. Vì vậy, hướng kết nối đáng xem xét là gọi các API này, thay vì đọc nội dung từng ô trên trang web.
