@@ -4,6 +4,7 @@ import java.net.URI;
 import java.util.List;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ProblemDetail;
+import vn.edu.phenikaa.ams.notification.application.NotificationException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -16,6 +17,12 @@ import vn.edu.phenikaa.ams.calendar.google.GoogleCalendarException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    @ExceptionHandler(NotificationException.class)
+    ProblemDetail handleNotification(NotificationException exception) {
+        var problem = ProblemDetail.forStatusAndDetail(exception.status(), exception.getMessage());
+        problem.setProperty("code", exception.code());
+        return problem;
+    }
 
     @ExceptionHandler(GoogleCalendarException.class)
     ResponseEntity<ProblemDetail> handleGoogleCalendar(GoogleCalendarException exception) {

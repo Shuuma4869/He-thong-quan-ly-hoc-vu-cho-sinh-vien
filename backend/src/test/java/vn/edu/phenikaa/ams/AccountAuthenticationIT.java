@@ -53,6 +53,19 @@ class AccountAuthenticationIT {
     }
 
     @Test
+    void disabledEmailFeatureKeepsSettingsButCannotSendVerification() throws Exception {
+        var browser = new Browser();
+        String email = email();
+        browser.register(email);
+        browser.login(email, PASSWORD);
+        var status = JSON.readTree(browser.get("/api/me/notifications/email").body());
+        assertThat(status.get("featureEnabled").asBoolean()).isFalse();
+        assertThat(status.get("syncAlertsEnabled").asBoolean()).isFalse();
+        assertThat(browser.postJson("/api/me/notifications/email/verification", Map.of()).statusCode()).isEqualTo(503);
+        assertThat(browser.get("/api/me").statusCode()).isEqualTo(200);
+    }
+
+    @Test
     void registrationNormalizesEmailHashesPasswordAndCreatesStudentSettings() throws Exception {
         var browser = new Browser();
         String email = email().toUpperCase();

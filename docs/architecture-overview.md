@@ -43,7 +43,13 @@ Frontend gọi `/api/...` cùng origin; Next.js chuyển tiếp tới backend qu
 
 Frontend kiểm tra `/api/me` ở server tại protected layout và từng protected page. `AuthBoundary` duy trì current-user state, kiểm tra lại khi focus cửa sổ và mỗi phút. Backend vẫn là nơi quyết định quyền truy cập. Khi đăng nhập/đăng xuất, frontend xóa query cache; dữ liệu tài khoản không dùng cache dùng chung giữa request.
 
-Migration V2 mở rộng `app_user` sẵn có và thêm `user_preferences` quan hệ một-một qua UUID. Phase 2 thêm grading policy theo phiên bản và lựa chọn policy ở StudentProfile, chưa có engine tính điểm. Email nhận thông báo chỉ là lựa chọn chưa xác minh; locale được lưu nhưng giao diện hiện vẫn bằng tiếng Việt.
+Migration V2 mở rộng `app_user` sẵn có và thêm `user_preferences` quan hệ một-một qua UUID. Phase 2 thêm grading policy theo phiên bản và lựa chọn policy ở StudentProfile, chưa có engine tính điểm. Email nhận thông báo có luồng xác minh và cảnh báo đồng bộ opt-in ở Phase 8A; locale được lưu nhưng email và giao diện hiện vẫn bằng tiếng Việt. [Chi tiết và giới hạn](email-notifications.md).
+
+## Cảnh báo đồng bộ qua email Phase 8A
+
+`user_preferences` giữ email đã chuẩn hóa, thời điểm xác minh và lựa chọn nhận cảnh báo (mặc định tắt). Mã xác minh gắn với user và email, chỉ lưu hash; đổi email làm mất xác minh và tắt cảnh báo. API lấy UUID từ session, không nhận recipient từ client. Resend nằm sau `EmailNotificationGateway`, không được gọi từ controller hay sync worker.
+
+`SyncRunFinalizer` đặt bước kết thúc run và thêm outbox trong cùng transaction. Cả đường chạy thường và phục hồi run stale đều đi qua điểm này; retry còn `QUEUED` không tạo cảnh báo. Worker outbox claim bằng PostgreSQL, gọi provider sau khi claim đã commit rồi cập nhật hàng bằng lease token. Lỗi gửi được giữ trong outbox; trạng thái sync không thay đổi. Chỉ `PARTIAL`/`FAILED` có thể tạo hàng, và unique constraint bảo vệ mỗi run một hàng. Tắt tính năng email không ngăn đồng bộ hoặc giao diện học vụ hoạt động.
 
 ## Dữ liệu và thay đổi
 

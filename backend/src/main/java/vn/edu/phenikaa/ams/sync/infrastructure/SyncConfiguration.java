@@ -17,6 +17,8 @@ import vn.edu.phenikaa.ams.academic.application.port.AcademicPortalClient;
 import vn.edu.phenikaa.ams.sync.application.SyncService;
 import vn.edu.phenikaa.ams.sync.application.SyncMaintenance;
 import vn.edu.phenikaa.ams.sync.application.SyncWorker;
+import vn.edu.phenikaa.ams.sync.application.SyncRunFinalizer;
+import vn.edu.phenikaa.ams.notification.infrastructure.NotificationOutboxStore;
 import vn.edu.phenikaa.ams.user.infrastructure.UserRepository;
 
 @Configuration(proxyBeanMethods = false)
@@ -24,6 +26,11 @@ import vn.edu.phenikaa.ams.user.infrastructure.UserRepository;
 public class SyncConfiguration {
     @Bean Clock syncClock() { return Clock.systemUTC(); }
     @Bean SyncRunStore syncRunStore(JdbcTemplate jdbc) { return new SyncRunStore(jdbc); }
+    @Bean SyncRunFinalizer syncRunFinalizer(SyncRunStore runs, NotificationOutboxStore outbox,
+                                            PlatformTransactionManager manager, MeterRegistry metrics,
+                                            @Value("${ams.notification.email.enabled:false}") boolean emailEnabled) {
+        return new SyncRunFinalizer(runs, outbox, manager, metrics, emailEnabled);
+    }
     @Bean
     SyncMaintenance syncMaintenance(SyncRunStore runs, PlatformTransactionManager transactions,
                                     Clock clock, MeterRegistry metrics,
@@ -55,14 +62,14 @@ public class SyncConfiguration {
     }
     @Bean(destroyMethod = "close")
     @ConditionalOnProperty(name = "ams.phenikaa.enabled", havingValue = "true")
-    SyncWorker syncWorker(SyncRunStore runs, RedisSyncLock lock, ProfileImportService profiles,
+    SyncWorker syncWorker(SyncRunStore runs, SyncRunFinalizer finalizer, RedisSyncLock lock, ProfileImportService profiles,
                           CurriculumImportService curricula, Clock clock, MeterRegistry metrics,
                           @Value("${ams.sync.max-attempts:3}") int attempts,
                           @Value("${ams.sync.batch-size:4}") int batch,
                           @Value("${ams.sync.backoff:10s}") Duration backoff,
                           @Value("${ams.sync.stale-timeout:3m}") Duration stale,
                           @Value("${ams.sync.worker-enabled:true}") boolean enabled) {
-        return new SyncWorker(runs, lock, profiles, curricula, clock, metrics,
+        return new SyncWorker(runs, finalizer, lock, profiles, curricula, clock, metrics,
                 attempts, batch, backoff, stale, enabled);
     }
 }

@@ -23,6 +23,7 @@ import vn.edu.phenikaa.ams.sync.infrastructure.SyncRunStore;
 public class SyncWorker implements AutoCloseable {
     private static final Logger log = LoggerFactory.getLogger(SyncWorker.class);
     private final SyncRunStore runs;
+    private final SyncRunFinalizer finalizer;
     private final RedisSyncLock lock;
     private final ProfileImportService profiles;
     private final CurriculumImportService curricula;
@@ -36,7 +37,7 @@ public class SyncWorker implements AutoCloseable {
     private final ScheduledExecutorService heartbeats = Executors.newSingleThreadScheduledExecutor(
             Thread.ofPlatform().daemon().name("ams-sync-heartbeat").factory());
 
-    public SyncWorker(SyncRunStore runs, RedisSyncLock lock, ProfileImportService profiles,
+    public SyncWorker(SyncRunStore runs, SyncRunFinalizer finalizer, RedisSyncLock lock, ProfileImportService profiles,
                       CurriculumImportService curricula, Clock clock, MeterRegistry metrics,
                       int maxAttempts, int batchSize, Duration backoff, Duration staleTimeout, boolean enabled) {
         if (maxAttempts < 1 || maxAttempts > 5 || batchSize < 1 || batchSize > 100
@@ -44,7 +45,7 @@ public class SyncWorker implements AutoCloseable {
                 || staleTimeout.compareTo(lock.ttl().plusSeconds(5)) <= 0
                 || staleTimeout.compareTo(Duration.ofMinutes(30)) > 0)
             throw new IllegalArgumentException("Invalid sync worker settings");
-        this.runs = runs; this.lock = lock; this.profiles = profiles; this.curricula = curricula;
+        this.runs = runs; this.finalizer = finalizer; this.lock = lock; this.profiles = profiles; this.curricula = curricula;
         this.clock = clock; this.metrics = metrics; this.maxAttempts = maxAttempts;
         this.batchSize = batchSize; this.backoff = backoff; this.staleTimeout = staleTimeout; this.enabled = enabled;
     }
@@ -90,7 +91,7 @@ public class SyncWorker implements AutoCloseable {
                 curricula.refreshAvailableCurricula(run.userId(), guard);
                 if (!runs.step(run.id(), run.attemptCount(), step, StepStatus.SUCCEEDED, clock.instant()))
                     throw new SyncLeaseLostException();
-                if (!runs.finish(run.id(), run.attemptCount(), Status.SUCCEEDED, null, clock.instant()))
+                if (!finalizer.finish(run.id(), run.attemptCount(), Status.SUCCEEDED, null, clock.instant()))
                     throw new SyncLeaseLostException();
                 metric(run, Status.SUCCEEDED, null);
             } catch (RuntimeException ex) {
@@ -111,7 +112,7 @@ public class SyncWorker implements AutoCloseable {
         int recovered = 0;
         for (var run : runs.staleBefore(now.minus(staleTimeout), batchSize)) {
             try {
-                if (!lock.locked(run.userId()) && runs.recover(run, now.minus(staleTimeout),
+                if (!lock.locked(run.userId()) && finalizer.recover(run, now.minus(staleTimeout),
                         now.plus(backoff), now, maxAttempts)) recovered++;
             } catch (RuntimeException ex) { log.warn("Sync stale recovery unavailable"); }
         }
@@ -135,7 +136,7 @@ public class SyncWorker implements AutoCloseable {
         if (status == Status.PARTIAL)
             runs.step(run.id(), run.attemptCount(), Step.CURRICULUM, StepStatus.FAILED, now);
         var terminalFailure = status == Status.SUCCEEDED ? null : code;
-        if (runs.finish(run.id(), run.attemptCount(), status, terminalFailure, now)) metric(run, status, terminalFailure);
+        if (finalizer.finish(run.id(), run.attemptCount(), status, terminalFailure, now)) metric(run, status, terminalFailure);
     }
 
     private static FailureCode failure(RuntimeException ex, Step step) {
