@@ -82,9 +82,10 @@ public class PhenikaaAcademicPortalClient implements AcademicPortalClient {
         return accessRead(currentUserId, connectionId, material -> http.fetchProfile(material.profile()));
     }
 
-    @Override public ScheduleObservation fetchSchedule(UUID currentUserId, StudentConnectionId connectionId,
+    @Override @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ScheduleObservation fetchSchedule(UUID currentUserId, StudentConnectionId connectionId,
                                                        LocalDate from, LocalDate through) {
-        return access(currentUserId, connectionId, material -> http.fetchSchedule(material.schedule(), from, through));
+        return accessRead(currentUserId, connectionId, material -> http.fetchSchedule(material.schedule(), from, through));
     }
 
     @Override @Transactional(propagation = Propagation.NOT_SUPPORTED)
@@ -107,12 +108,14 @@ public class PhenikaaAcademicPortalClient implements AcademicPortalClient {
         return material.curriculum();
     }
 
-    @Override public List<ExamPeriod> fetchExamPeriods(UUID currentUserId, StudentConnectionId connectionId) {
-        return access(currentUserId, connectionId, material -> http.fetchExamPeriods(examSession(material)));
+    @Override @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public List<ExamPeriod> fetchExamPeriods(UUID currentUserId, StudentConnectionId connectionId) {
+        return accessRead(currentUserId, connectionId, material -> http.fetchExamPeriods(examSession(material)));
     }
 
-    @Override public ExamObservation fetchExams(UUID currentUserId, StudentConnectionId connectionId, ExamPeriod period) {
-        return access(currentUserId, connectionId, material -> http.fetchExams(examSession(material), period));
+    @Override @Transactional(propagation = Propagation.NOT_SUPPORTED)
+    public ExamObservation fetchExams(UUID currentUserId, StudentConnectionId connectionId, ExamPeriod period) {
+        return accessRead(currentUserId, connectionId, material -> http.fetchExams(examSession(material), period));
     }
 
     private static PhenikaaSession examSession(PhenikaaSessionMaterial material) {

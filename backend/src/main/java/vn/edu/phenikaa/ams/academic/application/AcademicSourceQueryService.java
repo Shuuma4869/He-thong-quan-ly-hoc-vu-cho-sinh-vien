@@ -5,9 +5,15 @@ import java.nio.charset.StandardCharsets;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
+import java.time.ZoneId;
+import java.time.format.DateTimeParseException;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.HexFormat;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
@@ -15,6 +21,7 @@ import vn.edu.phenikaa.ams.academic.application.port.*;
 import static vn.edu.phenikaa.ams.academic.application.AcademicSourceQueryException.Code.*;
 
 public class AcademicSourceQueryService {
+    private static final ZoneId SOURCE_ZONE = ZoneId.of("Asia/Ho_Chi_Minh");
     private final AcademicPortalClient portal;
     private final AcademicReadGate gate;
 
@@ -32,8 +39,8 @@ public class AcademicSourceQueryService {
                     new CapabilitySupport("COURSE_CATALOG", "PERSISTED_PARTIAL", "UNKNOWN"),
                     new CapabilitySupport("ACADEMIC_RECORDS", "LIVE_READ_ONLY", "UNKNOWN"),
                     new CapabilitySupport("ACADEMIC_RESULT_DETAIL", "LIVE_READ_ONLY", "UNKNOWN"),
-                    new CapabilitySupport("SCHEDULE", "ADAPTER_READ_ONLY_NO_API", "UNKNOWN"),
-                    new CapabilitySupport("EXAMS", "ADAPTER_READ_ONLY_NO_API", "UNKNOWN"),
+                    new CapabilitySupport("SCHEDULE", "LIVE_READ_ONLY", "UNKNOWN"),
+                    new CapabilitySupport("EXAMS", "LIVE_READ_ONLY", "UNKNOWN"),
                     new CapabilitySupport("STUDENT_COURSE", "BLOCKED_SOURCE_LIMIT", "UNKNOWN"),
                     new CapabilitySupport("ACADEMIC_RESULT", "BLOCKED_SOURCE_LIMIT", "UNKNOWN"),
                     new CapabilitySupport("CLASS_SESSION", "BLOCKED_SOURCE_LIMIT", "UNKNOWN"),
@@ -47,6 +54,78 @@ public class AcademicSourceQueryService {
                 portal.fetchAcademicPrograms(userId, connection).stream()
                         .map(program -> new ProgramView(reference("program", userId, program.sourceId()), program.label()))
                         .toList()));
+    }
+
+    public ScheduleView schedule(UUID userId, String fromText, String throughText) {
+        LocalDate from = parseDate(fromText);
+        LocalDate through = parseDate(throughText);
+        long days = ChronoUnit.DAYS.between(from, through);
+        if (days < 0 || days > 30) throw new AcademicSourceQueryException(INVALID_SOURCE_RANGE);
+        return read(userId, AcademicReadGate.Capability.SCHEDULE, connection -> {
+            var observation = portal.fetchSchedule(userId, connection, from, through);
+            if (observation == null || !from.equals(observation.from()) || !through.equals(observation.through())
+                    || !SOURCE_ZONE.equals(observation.zone()) || observation.entries().size() > 10000
+                    || observation.entries().stream().anyMatch(entry -> entry == null || entry.date() == null
+                        || entry.date().isBefore(from) || entry.date().isAfter(through) || entry.kind() == null))
+                throw new AcademicSourceQueryException(SOURCE_DATA_INCOMPLETE);
+            return new ScheduleView("UNKNOWN", "UNVERIFIED", observation.zone().getId(), from, through,
+                    observation.entries().stream().map(entry -> new ScheduleEntryView(entry.courseName(), entry.date(),
+                            entry.startsAt(), entry.endsAt(), entry.room(), entry.lecturer(), entry.kind().name())).toList());
+        });
+    }
+
+    public ExamPeriodsView examPeriods(UUID userId) {
+        return read(userId, AcademicReadGate.Capability.EXAM_PERIODS, connection -> {
+            var periods = checkedExamPeriods(userId, connection);
+            return new ExamPeriodsView("UNKNOWN", periods.stream()
+                    .map(period -> new ExamPeriodView(reference("exam-period", userId, period.sourceId()), period.label()))
+                    .toList());
+        });
+    }
+
+    public ExamsView exams(UUID userId, String periodRef) {
+        validateReference(periodRef, "exam-period");
+        return read(userId, AcademicReadGate.Capability.EXAMS, connection -> {
+            var period = checkedExamPeriods(userId, connection).stream()
+                    .filter(candidate -> reference("exam-period", userId, candidate.sourceId()).equals(periodRef))
+                    .findFirst().orElseThrow(() -> new AcademicSourceQueryException(INVALID_SOURCE_REFERENCE));
+            var observation = portal.fetchExams(userId, connection, period);
+            if (observation == null || !period.equals(observation.requestedPeriod())
+                    || !SOURCE_ZONE.equals(observation.zone()) || observation.entries().size() > 10000
+                    || observation.entries().stream().anyMatch(entry -> entry == null || entry.startsAt() == null
+                        || entry.examAttempt() < 1 || entry.endsAt() != null
+                        && (!entry.endsAt().isAfter(entry.startsAt())
+                            || !entry.endsAt().atZone(SOURCE_ZONE).toLocalDate()
+                                .equals(entry.startsAt().atZone(SOURCE_ZONE).toLocalDate()))))
+                throw new AcademicSourceQueryException(SOURCE_DATA_INCOMPLETE);
+            var entries = observation.entries().stream().map(entry -> {
+                var start = entry.startsAt().atZone(observation.zone());
+                var end = entry.endsAt() == null ? null : entry.endsAt().atZone(observation.zone());
+                return new ExamEntryView(entry.courseCode(), entry.courseName(), entry.examAttempt(),
+                        entry.examSession(), start.toLocalDate(), start.toLocalTime(),
+                        end == null ? null : end.toLocalTime(), entry.room());
+            }).toList();
+            return new ExamsView("UNKNOWN", "UNVERIFIED", observation.zone().getId(),
+                    new ExamPeriodView(periodRef, period.label()), entries);
+        });
+    }
+
+    private List<ExamPeriod> checkedExamPeriods(UUID userId, AcademicPortalClient.StudentConnectionId connection) {
+        var periods = portal.fetchExamPeriods(userId, connection);
+        if (periods == null || periods.size() > 256) throw new AcademicSourceQueryException(SOURCE_DATA_INCOMPLETE);
+        var ids = new HashSet<String>();
+        for (var period : periods) {
+            if (period == null || !ids.add(period.sourceId()))
+                throw new AcademicSourceQueryException(SOURCE_SCHEMA_CHANGED);
+        }
+        return periods;
+    }
+
+    private static LocalDate parseDate(String value) {
+        if (value == null || !value.matches("[0-9]{4}-[0-9]{2}-[0-9]{2}"))
+            throw new AcademicSourceQueryException(INVALID_SOURCE_RANGE);
+        try { return LocalDate.parse(value); }
+        catch (DateTimeParseException ex) { throw new AcademicSourceQueryException(INVALID_SOURCE_RANGE); }
     }
 
     public RecordsView records(UUID userId, String programRef) {
@@ -152,8 +231,18 @@ public class AcademicSourceQueryService {
     }
 
     private static void validateReference(String ref, String kind) {
-        if (ref == null || !ref.matches((kind.equals("program") ? "pr_" : "dt_") + "[0-9a-f]{64}"))
+        if (ref == null || !ref.matches(referencePrefix(kind) + "[0-9a-f]{64}"))
             throw new AcademicSourceQueryException(INVALID_SOURCE_REFERENCE);
+    }
+
+    private static String referencePrefix(String kind) {
+        return switch (kind) {
+            case "program" -> "pr_";
+            case "detail" -> "dt_";
+            case "registration" -> "rg_";
+            case "exam-period" -> "ep_";
+            default -> throw new IllegalArgumentException("Unsupported source reference kind");
+        };
     }
 
     private static String reference(String kind, UUID userId, String... sourceParts) {
@@ -166,8 +255,7 @@ public class AcademicSourceQueryService {
                 digest.update((byte) 0);
                 digest.update(part.getBytes(StandardCharsets.UTF_8));
             }
-            return (kind.equals("program") ? "pr_" : kind.equals("detail") ? "dt_" : "rg_")
-                    + HexFormat.of().formatHex(digest.digest());
+            return referencePrefix(kind) + HexFormat.of().formatHex(digest.digest());
         } catch (NoSuchAlgorithmException ex) { throw new IllegalStateException("SHA-256 unavailable"); }
     }
 
@@ -175,6 +263,16 @@ public class AcademicSourceQueryService {
     public record CapabilitySupport(String capability, String mode, String completeness) {}
     public record ProgramsView(String completeness, List<ProgramView> programs) {}
     public record ProgramView(String programRef, String label) {}
+    public record ScheduleView(String completeness, String identityScope, String zone, LocalDate from,
+                               LocalDate through, List<ScheduleEntryView> entries) {}
+    public record ScheduleEntryView(String courseName, LocalDate date, LocalTime startsAt, LocalTime endsAt,
+                                    String room, String lecturer, String kind) {}
+    public record ExamPeriodsView(String completeness, List<ExamPeriodView> periods) {}
+    public record ExamPeriodView(String periodRef, String label) {}
+    public record ExamsView(String completeness, String identityScope, String zone, ExamPeriodView period,
+                            List<ExamEntryView> entries) {}
+    public record ExamEntryView(String courseCode, String courseName, int examAttempt, String examSession,
+                                LocalDate date, LocalTime startsAt, LocalTime endsAt, String room) {}
     public record UnknownSemantics(String creditsEarned, String includedInGpa, String currentResult) {}
     public record RecordsView(String completeness, UnknownSemantics unknownSemantics, List<RecordView> records) {
         @Override public String toString() { return "RecordsView[redacted]"; }

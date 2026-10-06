@@ -189,6 +189,31 @@ class PhenikaaConnectionIT {
         verifyNoInteractions(http);
     }
 
+    @Test void scheduleAndExamHttpReadsRunOutsideLongDatabaseTransactions() {
+        var connection = connectWithExams();
+        var day = LocalDate.of(2026, 10, 1);
+        var period = new ExamPeriod("synthetic-period", "Kỳ giả định");
+        when(http.fetchSchedule(any(), eq(day), eq(day))).thenAnswer(invocation -> {
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager
+                    .isActualTransactionActive()).isFalse();
+            return new ScheduleObservation(day, day, java.time.ZoneId.of("Asia/Ho_Chi_Minh"), java.util.List.of());
+        });
+        when(http.fetchExamPeriods(any())).thenAnswer(invocation -> {
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager
+                    .isActualTransactionActive()).isFalse();
+            return java.util.List.of(period);
+        });
+        when(http.fetchExams(any(), eq(period))).thenAnswer(invocation -> {
+            assertThat(org.springframework.transaction.support.TransactionSynchronizationManager
+                    .isActualTransactionActive()).isFalse();
+            return new ExamObservation(period, java.time.ZoneId.of("Asia/Ho_Chi_Minh"), java.util.List.of());
+        });
+        assertThat(portal.fetchSchedule(owner.getId(), connection, day, day).entries()).isEmpty();
+        assertThat(portal.fetchExamPeriods(owner.getId(), connection)).containsExactly(period);
+        assertThat(portal.fetchExams(owner.getId(), connection, period).entries()).isEmpty();
+        assertThat(portal.status(owner.getId()).lastSuccessfulAccessAt()).isNotNull();
+    }
+
     @Test void missingExamContextPreservesWorkingProfileConnection() {
         var connection = connect();
         clearInvocations(http);
