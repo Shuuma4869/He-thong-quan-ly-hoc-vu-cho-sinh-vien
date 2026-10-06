@@ -51,7 +51,9 @@ erDiagram
     exam o|--o{ schedule_change : exam_target
 ```
 
-`student_profile.curriculum_id` và `grading_policy_id` là lựa chọn hiện tại, nullable và chỉ trỏ tới bản ghi của chính hồ sơ. Mỗi change có đúng một target: session hoặc exam; ERD không biểu diễn được ràng buộc XOR này nên migration có CHECK riêng.
+`student_profile.curriculum_id` là **chương trình người dùng chọn để theo dõi trong AMS**, không phải chương trình hiện hành do Phenikaa xác nhận. Cột có thể null, kể cả khi hồ sơ chỉ có một curriculum. Khóa ngoại ghép `(id, curriculum_id) → curriculum(profile_id, id)` ngăn trỏ sang chương trình của hồ sơ khác. `grading_policy_id` cũng nullable và chỉ trỏ tới bản ghi cùng hồ sơ. Mỗi change có đúng một target: session hoặc exam; ERD không biểu diễn được ràng buộc XOR này nên migration có CHECK riêng.
+
+Phase 16A dùng lại cột và khóa ngoại có từ V3, không thêm migration. GET lựa chọn trả null nếu chưa có hồ sơ; PUT chọn curriculum thuộc đúng hồ sơ; DELETE đặt `curriculum_id` về null mà không xóa curriculum. Import/refresh cùng curriculum giữ UUID nên lựa chọn vẫn trỏ tới bản ghi đó; import một curriculum khác không tự đổi lựa chọn. Đây mới là mốc cho phần tiến độ/kế hoạch sau này, chưa có dữ liệu để tính tín chỉ đã đạt, còn thiếu hoặc GPA.
 
 ## Môn học, lớp mở và lần học
 

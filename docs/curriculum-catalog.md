@@ -4,7 +4,9 @@ Trang `/curriculum` dành cho tài khoản AMS đã đăng nhập. Trang đọc 
 
 ## Những gì màn hình đang nói
 
-**Chương trình** liệt kê các chương trình đã lưu của hồ sơ. Nếu có một chương trình, trang mở ngay phần chi tiết. Nếu có nhiều chương trình, người xem chọn từ danh sách; lựa chọn đầu tiên chỉ là mặc định hiển thị theo thứ tự mã và UUID, không phải chương trình hiện hành. Lựa chọn này không được ghi vào hồ sơ.
+**Chương trình** liệt kê các chương trình đã lưu của hồ sơ. Nếu có một chương trình, trang mở ngay phần chi tiết. Nếu có nhiều chương trình, dropdown chỉ chọn bản ghi **đang xem**. Chương trình đầu tiên là mặc định hiển thị theo thứ tự mã và UUID; AMS không tự chọn nó để theo dõi, kể cả khi danh sách chỉ có một chương trình.
+
+Card **Chương trình theo dõi trong AMS** là lựa chọn riêng của người dùng. Khi đang xem chương trình muốn theo dõi, bấm **Đặt làm chương trình theo dõi**; có thể chuyển sang xem chương trình khác mà lựa chọn vẫn giữ nguyên, đổi lựa chọn hoặc bấm **Bỏ chương trình theo dõi**. Thao tác bỏ chọn không xóa chương trình hay môn đã lưu. Đây chỉ là mốc cho tính năng kế hoạch học tập sau này, **không phải** chương trình hiện hành được Phenikaa xác nhận.
 
 Ba số tóm tắt là số môn có liên kết đã lưu, số nhóm đã lưu và tín chỉ quy định của chương trình. Chúng không nói sinh viên đã học được bao nhiêu. Chẳng hạn chương trình có yêu cầu 120 tín chỉ thì con số 120 vẫn là yêu cầu, không phải tín chỉ tích lũy.
 
@@ -16,7 +18,7 @@ Mỗi môn trong chương trình có mã, tên, tín chỉ, loại yêu cầu, n
 
 Không có hồ sơ/chương trình/môn thì trang báo rỗng. Đăng ký AMS không tự nhập học vụ. Trang này không có nút tạo dữ liệu mẫu hoặc cấp phiên Phenikaa; quy trình kết nối/đồng bộ hiện tại vẫn giữ nguyên.
 
-## API đọc dữ liệu
+## API dữ liệu đã lưu và lựa chọn theo dõi
 
 Các endpoint sau đều cần session AMS; không nhận user ID hoặc profile ID từ client. Tích hợp Phenikaa không cần bật để sử dụng.
 
@@ -26,6 +28,11 @@ Các endpoint sau đều cần session AMS; không nhận user ID hoặc profile
 | `/api/me/academic/curricula/{curriculumId}` | Metadata chương trình và một trang nhóm |
 | `/api/me/academic/curricula/{curriculumId}/courses` | Một trang môn có liên kết tới chương trình |
 | `/api/me/academic/catalog/courses` | Một trang Course thuộc hồ sơ, gồm cả môn chưa liên kết |
+| `/api/me/academic/curriculum-selection` | Chương trình người dùng đã chọn để theo dõi, hoặc null |
+
+`PUT /api/me/academic/curriculum-selection` nhận `{ "curriculumId": "<UUID nội bộ AMS>" }` và trả lựa chọn sau khi lưu. `DELETE` cùng đường dẫn bỏ chọn và trả `curriculum: null`. Cả hai cần CSRF token như các thao tác ghi khác. GET/PUT/DELETE chỉ dùng PostgreSQL; không gọi Phenikaa và không cần kết nối nguồn còn hiệu lực. Một user chưa có StudentProfile nhận GET 200 với null, còn PUT trả 404 và không tự tạo hồ sơ.
+
+Response lựa chọn có `selectionMode: "USER_SELECTED_AMS"` cùng `curriculum` là null hoặc object gồm `id`, `code`, `name`, `cohort`, `revision`, `minimumCredits`. Không có profile ID hoặc ID nguồn. Endpoint đọc thẳng curriculum đã chọn, không phụ thuộc nó có nằm trong trang đầu `/curricula` hay không. `minimumCredits` là **tín chỉ tối thiểu theo chương trình**, không phải tín chỉ còn thiếu.
 
 Danh sách có dạng `{ "items": [...], "nextCursor": null }`. Khi còn trang, `nextCursor` là chuỗi để truyền nguyên vẹn vào request kế tiếp. Chi tiết chương trình có dạng `{ "curriculum": {...}, "groups": { "items": [...], "nextCursor": ... } }`; cursor của endpoint này phân trang **nhóm**, không phải môn.
 
@@ -42,7 +49,7 @@ Cursor phiên bản 1 chứa vị trí mã–UUID, không chứa thông tin ngu�
 - Môn trong chương trình: `id` của liên kết, `courseId`, `code`, `name`, `credits` của liên kết, `requirement`, `groupId`, `groupName`, `recommendedTerm`.
 - Môn catalog: `id` của Course, `code`, `name`, `credits` của Course, `curriculumLinked`.
 
-UUID đều là định danh nội bộ AMS. Không trả ID nguồn, selector, profile ID, version Hibernate hay dữ liệu kết nối. `cohort`, `revision`, yêu cầu nhóm và kỳ kế hoạch có thể null; frontend phải giữ nghĩa “chưa xác định”. API không thêm cờ current/completed/eligible.
+UUID đều là định danh nội bộ AMS. Không trả ID nguồn, selector, profile ID, version Hibernate hay dữ liệu kết nối. `cohort`, `revision`, yêu cầu nhóm và kỳ kế hoạch có thể null; frontend phải giữ nghĩa “chưa xác định”. API không thêm cờ source-current/completed/eligible.
 
 ### Lỗi và quyền truy cập
 
@@ -50,11 +57,12 @@ UUID đều là định danh nội bộ AMS. Không trả ID nguồn, selector, 
 | --- | --- |
 | 401 | Chưa đăng nhập hoặc phiên AMS hết hạn |
 | 403 | Tài khoản không còn ACTIVE |
-| 400 | `INVALID_CATALOG_QUERY`: UUID, limit, cursor hoặc từ khóa không hợp lệ |
+| 400 | UUID/body không hợp lệ, hoặc `INVALID_CATALOG_QUERY` cho limit, cursor, từ khóa của API danh sách |
 | 404 | `CURRICULUM_NOT_FOUND`: không tìm thấy chương trình trong phạm vi tài khoản |
 | 503 | `CATALOG_UNAVAILABLE`: tạm thời không đọc được database |
+| 503 | `CURRICULUM_SELECTION_UNAVAILABLE`: tạm thời không đọc/ghi được lựa chọn |
 
-Lỗi trả thông báo an toàn, không đưa SQL, tên bảng hoặc stack trace cho client. Chương trình của tài khoản khác và UUID không tồn tại đều trả 404. Một tài khoản chưa có StudentProfile nhận danh sách rỗng; GET không tạo hồ sơ. Cookie/session và CSRF hiện có không thay đổi; những API mới chỉ là GET.
+Lỗi trả thông báo an toàn, không đưa SQL, tên bảng hoặc stack trace cho client. Chương trình của tài khoản khác và UUID không tồn tại đều trả 404. Một tài khoản chưa có StudentProfile nhận danh sách rỗng ở API danh sách, null ở API lựa chọn; GET không tạo hồ sơ. Cookie/session và CSRF hiện có không thay đổi.
 
 ## Giao diện và kiểm thử
 
@@ -64,7 +72,7 @@ Navigation hoạt động trên desktop lẫn thanh dưới của mobile. Layout
 
 Integration test chạy PostgreSQL/Redis thật với fixture tổng hợp: hai tài khoản, nhiều chương trình cùng mã, nhóm có/không có yêu cầu, tín chỉ thập phân và môn catalog-only. Test kiểm tra ownership, schema DTO, ký tự tìm kiếm, ranh giới trang và ảnh chụp hàng trước/sau GET để phát hiện ghi ngoài ý muốn. Mock của `AcademicPortalClient` phải không có tương tác. Không kết nối tài khoản trường hoặc đưa dữ liệu thật vào fixture.
 
-E2E đăng nhập bằng backend thật, giả lập riêng response curriculum/catalog để kiểm tra navigation, chọn chương trình, nhóm, tìm kiếm, catalog, mobile và dark theme. Đây là kiểm thử UI qua hợp đồng API, không thay cho integration test truy vấn PostgreSQL. CI không gọi Phenikaa, Google hoặc dịch vụ email.
+E2E đăng nhập bằng backend thật. Kiểm thử đọc danh mục vẫn giả lập response để kiểm tra navigation, nhóm, tìm kiếm, mobile và dark theme; luồng chọn chương trình dùng hai bản ghi tổng hợp tạo qua fixture **chỉ tồn tại trong test runtime**, rồi kiểm tra PUT, đổi A sang B, tải lại, dashboard và DELETE trên PostgreSQL thật. Fixture không được đăng ký trong ứng dụng production. CI không gọi Phenikaa, Google hoặc dịch vụ email.
 
 ## Ranh giới chưa thay đổi
 

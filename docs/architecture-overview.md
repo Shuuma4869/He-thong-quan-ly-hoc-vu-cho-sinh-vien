@@ -20,13 +20,13 @@ EmailNotificationGateway ---- Email provider
 
 ## Giao diện tổng quan và đồng bộ
 
-Dashboard là các truy vấn độc lập tới API của tài khoản hiện tại: trạng thái Phenikaa, trạng thái Google Calendar, lượt đồng bộ gần nhất và một trang chương trình đã lưu. Nó không đọc trực tiếp cổng trường hay Google, cũng không lấy toàn bộ danh sách chương trình để tính số lượng. Chưa có dữ liệu kết quả học tập và lịch được lưu nên dashboard không trình bày GPA, tín chỉ đã hoàn thành, kỳ thi hoặc sự kiện giả.
+Dashboard là các truy vấn độc lập tới API của tài khoản hiện tại: trạng thái Phenikaa, trạng thái Google Calendar, lượt đồng bộ gần nhất và chương trình được người dùng chọn để theo dõi. Nó không đọc trực tiếp cổng trường hay Google, cũng không tải trang đầu danh sách rồi đoán chương trình được chọn. Chưa có dữ liệu kết quả học tập và lịch được lưu nên dashboard không trình bày GPA, tín chỉ đã hoàn thành, kỳ thi hoặc sự kiện giả.
 
 `/sync` nằm trong protected layout. Trang chỉ bật nút yêu cầu thủ công khi trạng thái Phenikaa là `CONNECTED`; backend vẫn kiểm tra lại kết nối, tài khoản, lượt đang hoạt động và giới hạn tần suất. POST lấy CSRF token theo cơ chế hiện có. Nếu backend trả lại một lượt đang chạy, giao diện theo dõi lượt đó thay vì tạo trạng thái giả. `GET /api/me/sync/current` nghĩa là lượt **gần nhất**, không mặc nhiên là lượt đang chạy. 404 có thể là chưa có lượt hoặc cả endpoint đã tắt theo cấu hình Phenikaa; vì vậy giao diện đọc riêng trạng thái nguồn. Khi tích hợp bị tắt, nó ghi "Không khả dụng" thay vì "Chưa kết nối" và không tải lịch sử.
 
 Lượt `QUEUED` hoặc `RUNNING` được kiểm tra lại qua `/runs/{runId}` khoảng 2,5 giây một lần. Khi trang được tải lại, lượt gần nhất đang hoạt động được dùng để tiếp tục theo dõi. Truy vấn dừng ở `SUCCEEDED`, `PARTIAL` hoặc `FAILED`; nếu mạng lỗi, nó dừng và cho người dùng thử lại, không lặp vô hạn. `PARTIAL` chỉ nói rằng một phần bước thành công, còn toàn lượt chưa hoàn tất: trạng thái hồ sơ và chương trình/danh mục phải được đọc riêng. Mã lỗi được đổi thành lời giải thích an toàn, không đưa exception nội bộ lên màn hình.
 
-Lịch sử lấy 10 lượt mỗi lần qua cursor và nút **Tải thêm**. Khi một lượt thành công hoặc hoàn tất một phần, cache chương trình, danh mục và lịch sử được làm mới. Các query key gắn UUID người dùng; truy vấn kiểm tra có chương trình trên dashboard có khóa riêng với danh sách phân trang để hai cấu trúc cache không ghi đè nhau. Thời gian hiển thị theo locale và múi giờ của trình duyệt. Giao diện không mở đường cấp phiên Phenikaa, không tự chọn chương trình hiện hành và không tạo sự kiện Google.
+Lịch sử lấy 10 lượt mỗi lần qua cursor và nút **Tải thêm**. Khi một lượt thành công hoặc hoàn tất một phần, cache chương trình, danh mục và lịch sử được làm mới. Các query key gắn UUID người dùng; truy vấn chương trình theo dõi trên dashboard có khóa riêng với danh sách phân trang để hai cấu trúc cache không ghi đè nhau. Thời gian hiển thị theo locale và múi giờ của trình duyệt. Giao diện không mở đường cấp phiên Phenikaa, không tự chọn chương trình hiện hành và không tạo sự kiện Google.
 
 ## Ranh giới tích hợp
 
@@ -65,7 +65,13 @@ Danh sách có giới hạn mặc định 50, tối đa 100; lấy thêm một h
 
 Các unique index theo profile/mã và index membership hiện có đủ làm nền cho phạm vi này; không thêm V11 hoặc sửa V1–V10. Tìm chuỗi con trên tên/mã có thể cần quét các hàng trong một hồ sơ: giới hạn response không có nghĩa chi phí tìm kiếm luôn cố định. Nếu catalog tăng lớn, cần đo bằng EXPLAIN trước khi thêm index tìm kiếm, không thêm sẵn một hệ thống search riêng.
 
-Frontend `/curriculum` đi qua protected layout và `requireCurrentUser`. Feature dùng TanStack Query với khóa có user UUID, dữ liệu luôn stale khi mount và GET `no-store`. Tìm kiếm có debounce 300 ms, hủy request cũ qua AbortSignal, phân trang “Tải thêm”. Chọn chương trình chỉ thay trạng thái màn hình, không cập nhật StudentProfile. [Hợp đồng API và cách hiểu giao diện](curriculum-catalog.md) được ghi riêng để người sửa UI không phải suy nghĩa từ schema.
+Frontend `/curriculum` đi qua protected layout và `requireCurrentUser`. Feature dùng TanStack Query với khóa có user UUID, dữ liệu luôn stale khi mount và GET `no-store`. Tìm kiếm có debounce 300 ms, hủy request cũ qua AbortSignal, phân trang “Tải thêm”. Dropdown chỉ đổi chương trình đang xem. Nút theo dõi là thao tác riêng: PUT/DELETE dùng CSRF, cập nhật `student_profile.curriculum_id` trong transaction ngắn và cập nhật cache lựa chọn; nó không gọi nguồn hay làm mới danh sách. [Hợp đồng API và cách hiểu giao diện](curriculum-catalog.md) được ghi riêng để người sửa UI không phải suy nghĩa từ schema.
+
+### Chương trình theo dõi trong AMS (Phase 16A)
+
+`CurriculumSelectionService` kiểm tra tài khoản còn ACTIVE, lấy hồ sơ của user hiện tại và chỉ tìm curriculum trong hồ sơ đó trước khi gọi `selectCurriculum`. UUID của user khác và UUID không tồn tại đều trả 404. GET dùng truy vấn riêng nối `student_profile` với curriculum đã chọn; vì thế lựa chọn vẫn đọc được nếu chương trình nằm ngoài trang danh sách đang tải. Không có hồ sơ hoặc chưa chọn thì trả `curriculum: null`, không tạo hồ sơ và không tự chọn chương trình duy nhất. DELETE bỏ lựa chọn nhưng giữ nguyên chương trình, nhóm và môn.
+
+`USER_SELECTED_AMS` có nghĩa là người dùng tự đặt mốc để các tính năng kế hoạch sau này tham chiếu. Nó không chứng minh chương trình hiện hành của nguồn. `minimumCredits` và các yêu cầu nhóm là mức quy định của chương trình đã lưu, chưa phải tín chỉ còn thiếu. Phase này chưa tạo `StudentCourse`, `AcademicResult`, phép tính điểm hoặc phần trăm tiến độ. Cả ba endpoint chọn/đọc/bỏ chọn chỉ dùng PostgreSQL, kể cả khi tích hợp Phenikaa đang tắt.
 
 Domain học vụ nằm trong `academic.domain`, change nằm trong `sync.domain`. Không có parser hoặc import adapter trong domain. Các tham chiếu dùng UUID nội bộ; catalog và kết quả được scope theo StudentProfile với composite FK chặn liên kết chéo hồ sơ. Đây là dữ liệu của từng user, chưa phải catalog toàn trường dùng chung.
 
