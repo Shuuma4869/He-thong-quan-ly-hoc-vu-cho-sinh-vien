@@ -5,6 +5,7 @@ const statusCompleteness = z.enum(["SOURCE_VERIFIED", "UNKNOWN"]);
 const programRef = z.string().regex(/^pr_[0-9a-f]{64}$/);
 const registrationRef = z.string().regex(/^rg_[0-9a-f]{64}$/);
 const detailRef = z.string().regex(/^dt_[0-9a-f]{64}$/);
+const examPeriodRef = z.string().regex(/^ep_[0-9a-f]{64}$/);
 const score = z.number().finite();
 
 const statusSchema = z.object({
@@ -47,19 +48,42 @@ const detailSchema = z.object({
   detailRef, completeness,
   components: z.array(componentSchema.extend({ registrationRef })),
 });
+const scheduleSchema = z.object({
+  completeness, identityScope: z.literal("UNVERIFIED"), zone: z.literal("Asia/Ho_Chi_Minh"),
+  from: z.iso.date(), through: z.iso.date(),
+  entries: z.array(z.object({
+    courseName: z.string().nullable(), date: z.iso.date(), startsAt: z.iso.time().nullable(),
+    endsAt: z.iso.time().nullable(), room: z.string().nullable(), lecturer: z.string().nullable(),
+    kind: z.enum(["CLASS", "EXAM", "UNKNOWN"]),
+  }).strict()),
+}).strict();
+const examPeriodSchema = z.object({ periodRef: examPeriodRef, label: z.string() }).strict();
+const examPeriodsSchema = z.object({ completeness, periods: z.array(examPeriodSchema) }).strict();
+const examsSchema = z.object({
+  completeness, identityScope: z.literal("UNVERIFIED"), zone: z.literal("Asia/Ho_Chi_Minh"),
+  period: examPeriodSchema,
+  entries: z.array(z.object({
+    courseCode: z.string(), courseName: z.string(), examAttempt: z.number().int().min(1),
+    examSession: z.string().nullable(), date: z.iso.date(), startsAt: z.iso.time(),
+    endsAt: z.iso.time().nullable(), room: z.string().nullable(),
+  }).strict()),
+}).strict();
 
 export type SourceStatus = z.infer<typeof statusSchema>;
 export type Programs = z.infer<typeof programsSchema>;
 export type Records = z.infer<typeof recordsSchema>;
 export type AcademicRecord = Records["records"][number];
 export type ResultDetail = z.infer<typeof detailSchema>;
+export type Schedule = z.infer<typeof scheduleSchema>;
+export type ExamPeriods = z.infer<typeof examPeriodsSchema>;
+export type Exams = z.infer<typeof examsSchema>;
 export type SourceErrorCode =
   | "CONNECTION_NOT_FOUND" | "RECONNECTION_REQUIRED" | "SOURCE_UNAVAILABLE" | "SOURCE_TIMEOUT"
-  | "SOURCE_SCHEMA_CHANGED" | "SOURCE_DATA_INCOMPLETE" | "INVALID_SOURCE_REFERENCE" | "RATE_LIMITED";
+  | "SOURCE_SCHEMA_CHANGED" | "SOURCE_DATA_INCOMPLETE" | "INVALID_SOURCE_REFERENCE" | "INVALID_SOURCE_RANGE" | "RATE_LIMITED";
 
 const knownCode = z.enum([
   "CONNECTION_NOT_FOUND", "RECONNECTION_REQUIRED", "SOURCE_UNAVAILABLE", "SOURCE_TIMEOUT",
-  "SOURCE_SCHEMA_CHANGED", "SOURCE_DATA_INCOMPLETE", "INVALID_SOURCE_REFERENCE", "RATE_LIMITED",
+  "SOURCE_SCHEMA_CHANGED", "SOURCE_DATA_INCOMPLETE", "INVALID_SOURCE_REFERENCE", "INVALID_SOURCE_RANGE", "RATE_LIMITED",
 ]);
 
 export class AcademicSourceError extends Error {
@@ -73,6 +97,9 @@ export const academicKeys = {
   programs: (userId: string) => ["academic-source-programs", userId] as const,
   records: (userId: string, ref: string) => ["academic-source-records", userId, ref] as const,
   detail: (userId: string, program: string, detail: string) => ["academic-source-detail", userId, program, detail] as const,
+  schedule: (userId: string, from: string, through: string) => ["academic-source-schedule", userId, from, through] as const,
+  examPeriods: (userId: string) => ["academic-source-exam-periods", userId] as const,
+  exams: (userId: string, periodRef: string) => ["academic-source-exams", userId, periodRef] as const,
 };
 
 async function read<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
@@ -93,6 +120,12 @@ export const getRecords = (ref: string, signal?: AbortSignal) =>
   read(`records?programRef=${encodeURIComponent(programRef.parse(ref))}`, recordsSchema, signal);
 export const getResultDetail = (program: string, detail: string, signal?: AbortSignal) =>
   read(`records/${encodeURIComponent(detailRef.parse(detail))}/detail?programRef=${encodeURIComponent(programRef.parse(program))}`, detailSchema, signal);
+export const getSchedule = (from: string, through: string, signal?: AbortSignal) =>
+  read(`schedule?from=${encodeURIComponent(z.iso.date().parse(from))}&through=${encodeURIComponent(z.iso.date().parse(through))}`,
+    scheduleSchema, signal);
+export const getExamPeriods = (signal?: AbortSignal) => read("exams/periods", examPeriodsSchema, signal);
+export const getExams = (ref: string, signal?: AbortSignal) =>
+  read(`exams?periodRef=${encodeURIComponent(examPeriodRef.parse(ref))}`, examsSchema, signal);
 
 const messages: Record<SourceErrorCode, string> = {
   CONNECTION_NOT_FOUND: "Chưa có kết nối học vụ có thể sử dụng.",
@@ -103,11 +136,14 @@ const messages: Record<SourceErrorCode, string> = {
   SOURCE_DATA_INCOMPLETE: "Dữ liệu nguồn chưa nhất quán hoặc vượt giới hạn an toàn.",
   SOURCE_UNAVAILABLE: "Nguồn học vụ tạm thời không sẵn sàng.",
   INVALID_SOURCE_REFERENCE: "Dữ liệu đã thay đổi; hãy đọc lại danh sách.",
+  INVALID_SOURCE_RANGE: "Khoảng ngày phải hợp lệ và không vượt quá 31 ngày.",
 };
 
-export function sourceErrorMessage(error: Error): string {
+export function sourceErrorMessage(error: Error, referenceKind?: "exam-period"): string {
   if (error instanceof AcademicSourceError) {
     if (error.status === 401 || error.status === 403) return "Phiên đăng nhập không còn quyền truy cập. Vui lòng đăng nhập lại.";
+    if (error.code === "INVALID_SOURCE_REFERENCE" && referenceKind === "exam-period")
+      return "Danh sách kỳ thi đã thay đổi; hãy đọc lại danh sách.";
     if (error.code) return messages[error.code];
   }
   return "Chưa thể đọc dữ liệu học vụ từ nguồn.";

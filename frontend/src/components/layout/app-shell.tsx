@@ -10,7 +10,7 @@ import { LogoutButton } from "@/features/auth/components/logout-button";
 const navigation = [
   { label: "Tổng quan", icon: LayoutDashboard, href: "/" },
   { label: "Học vụ", icon: GraduationCap, href: "/academic" },
-  { label: "Lịch", icon: CalendarDays, href: null },
+  { label: "Lịch", icon: CalendarDays, href: "/schedule" },
   { label: "Chương trình", icon: BookOpenCheck, href: "/curriculum" },
   { label: "Đồng bộ", icon: RefreshCw, href: "/sync" },
 ];
@@ -53,9 +53,9 @@ export function AppShell({ children }: Readonly<{ children: React.ReactNode }>) 
           </div>
         </header>
         <main id="main-content" className="mx-auto max-w-[1500px] px-4 py-7 pb-24 lg:px-8 lg:py-10">{children}</main>
-        <nav className="fixed inset-x-3 bottom-3 z-30 flex justify-around rounded-2xl border bg-card/95 p-2 shadow-xl backdrop-blur lg:hidden" aria-label="Điều hướng di động">
+        <nav className="fixed inset-x-3 bottom-3 z-30 grid grid-cols-5 rounded-2xl border bg-card/95 p-2 shadow-xl backdrop-blur lg:hidden" aria-label="Điều hướng di động">
           {navigation.filter((item) => item.href).map(({ label, icon: Icon, href }) => href ? (
-            <Link key={label} href={href} aria-current={pathname === href ? "page" : undefined} className={`flex min-w-16 flex-col items-center gap-1 rounded-xl py-1.5 text-[11px] ${pathname === href ? "text-primary" : "text-muted"}`}><Icon aria-hidden="true" className="size-5" />{label}</Link>
+            <Link key={label} href={href} aria-current={pathname === href ? "page" : undefined} className={`flex min-w-0 flex-col items-center gap-1 rounded-xl py-1.5 text-[10px] sm:text-[11px] ${pathname === href ? "text-primary" : "text-muted"}`}><Icon aria-hidden="true" className="size-5" />{label}</Link>
           ) : (
             <span key={label} aria-disabled="true" className="flex min-w-16 flex-col items-center gap-1 rounded-xl py-1.5 text-[11px] text-muted" title="Chưa khả dụng"><Icon className="size-5" />{label}<span className="sr-only"> · Chưa khả dụng</span></span>
           ))}
