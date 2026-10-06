@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useInfiniteQuery } from "@tanstack/react-query";
+import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { BookOpenCheck, Library, RefreshCw, Search } from "lucide-react";
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
@@ -55,29 +55,64 @@ export function CurriculumBrowser({ userId }: { userId: string }) {
 
 function Curricula({ userId }: { userId: string }) {
   const [selectedId, setSelectedId] = useState<string>();
-  const query = useInfiniteQuery({ ...queryOptions, queryKey: ["curricula", userId], initialPageParam: undefined as string | undefined,
+  const client = useQueryClient();
+  const selection = useQuery({ ...queryOptions, queryKey: api.curriculumKeys.selection(userId),
+    queryFn: ({ signal }) => api.getCurriculumSelection(signal) });
+  const change = useMutation({ mutationFn: api.selectCurriculum,
+    onSuccess: (result) => client.setQueryData(api.curriculumKeys.selection(userId), result) });
+  const clear = useMutation({ mutationFn: api.clearCurriculumSelection,
+    onSuccess: (result) => client.setQueryData(api.curriculumKeys.selection(userId), result) });
+  const query = useInfiniteQuery({ ...queryOptions, queryKey: api.curriculumKeys.list(userId), initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam, signal }) => api.getCurricula(pageParam, signal), getNextPageParam: (last) => last.nextCursor ?? undefined });
-  if (query.isPending) return <Loading>Đang tải chương trình…</Loading>;
-  if (query.isError) return <ReadError error={query.error} retry={() => void query.refetch()} />;
-  const curricula = query.data.pages.flatMap((p) => p.items);
-  const selected = curricula.find((c) => c.id === selectedId) ?? curricula[0];
+  const curricula = query.data?.pages.flatMap((p) => p.items) ?? [];
+  const viewed = curricula.find((c) => c.id === selectedId) ?? curricula[0];
+  const selected = selection.data?.curriculum;
+  const saving = change.isPending || clear.isPending;
   return <div className="space-y-6">
+    <section className={`${panel} min-w-0 space-y-3`} aria-label="Chương trình theo dõi trong AMS">
+      <h2 className="font-semibold">Chương trình theo dõi trong AMS</h2>
+      {selection.isPending ? <p role="status">Đang đọc chương trình theo dõi…</p>
+        : selection.isError ? <ReadError error={selection.error} retry={() => void selection.refetch()} />
+        : selected ? <>
+          <p className="break-words font-medium">{selected.code} — {selected.name}</p>
+          <p className="text-sm text-muted">{selected.revision ? `Phiên bản ${selected.revision} · ` : ""}{selected.cohort ? `Khóa ${selected.cohort} · ` : ""}Tín chỉ tối thiểu theo chương trình: {selected.minimumCredits}</p>
+          <p className="text-sm font-medium text-primary">Đang theo dõi trong AMS</p>
+          <Button variant="outline" disabled={saving} onClick={() => { change.reset(); clear.mutate(); }}>Bỏ chương trình theo dõi</Button>
+        </> : <p>Bạn chưa chọn chương trình để theo dõi.</p>}
+      <p className="text-sm text-muted">Lựa chọn này do bạn đặt trong AMS và chưa được xác nhận là chương trình hiện hành từ nguồn.</p>
+      {(change.isError || clear.isError) && <p role="alert" className="text-sm text-destructive">{selectionError(change.error ?? clear.error)}</p>}
+    </section>
+    {query.isPending ? <Loading>Đang tải chương trình…</Loading> : query.isError
+      ? <ReadError error={query.error} retry={() => void query.refetch()} /> : <>
     <div className="flex flex-wrap items-end gap-3">
       {curricula.length > 1 && <label className="flex min-w-0 flex-1 basis-full flex-col gap-2 text-sm font-medium sm:basis-0">Chọn chương trình để xem
-        <select className={`${field} w-full`} value={selected.id} onChange={(e) => setSelectedId(e.target.value)}>
+        <select className={`${field} w-full max-w-full`} value={viewed.id} onChange={(e) => setSelectedId(e.target.value)}>
           {curricula.map((c, index) => <option key={c.id} value={c.id}>{index + 1}. {c.code} — {c.name}{c.revision ? ` · ${c.revision}` : ""}{c.cohort ? ` · ${c.cohort}` : ""}</option>)}
         </select>
       </label>}
       <More available={query.hasNextPage} busy={query.isFetchingNextPage} load={() => void query.fetchNextPage()} label="Tải thêm chương trình" />
       <Button variant="outline" disabled={query.isFetching} onClick={() => void query.refetch()}><RefreshCw className="size-4" aria-hidden="true" />Đọc lại danh sách</Button>
     </div>
-    {!selected ? <p className={panel}>Chưa có chương trình được lưu trong AMS. Bạn vẫn có thể xem tab Danh mục môn.</p>
-      : <CurriculumDetail key={selected.id} userId={userId} curriculumId={selected.id} />}
+    {!viewed ? <p className={panel}>Chưa có chương trình được lưu trong AMS. Bạn vẫn có thể xem tab Danh mục môn.</p>
+      : <CurriculumDetail key={viewed.id} userId={userId} curriculumId={viewed.id}
+          tracked={selected?.id === viewed.id} canSelect={selection.isSuccess && !saving}
+          onSelect={() => { clear.reset(); change.mutate(viewed.id); }} />}
+    </>}
   </div>;
 }
 
-function CurriculumDetail({ userId, curriculumId }: { userId: string; curriculumId: string }) {
-  const query = useInfiniteQuery({ ...queryOptions, queryKey: ["curriculum", userId, curriculumId], initialPageParam: undefined as string | undefined,
+function selectionError(error: Error | null) {
+  if (error instanceof ApiError) {
+    if (error.status === 401 || error.status === 403) return "Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.";
+    if (error.status === 404) return "Chương trình không còn tồn tại trong dữ liệu đã lưu. Hãy đọc lại danh sách.";
+  }
+  return "Chưa thể cập nhật chương trình theo dõi. Vui lòng thử lại.";
+}
+
+function CurriculumDetail({ userId, curriculumId, tracked, canSelect, onSelect }: {
+  userId: string; curriculumId: string; tracked: boolean; canSelect: boolean; onSelect: () => void;
+}) {
+  const query = useInfiniteQuery({ ...queryOptions, queryKey: api.curriculumKeys.detail(userId, curriculumId), initialPageParam: undefined as string | undefined,
     queryFn: ({ pageParam, signal }) => api.getCurriculum(curriculumId, pageParam, signal), getNextPageParam: (last) => last.groups.nextCursor ?? undefined });
   if (query.isPending) return <Loading>Đang tải chi tiết chương trình…</Loading>;
   if (query.isError) return <ReadError error={query.error} retry={() => void query.refetch()} />;
@@ -90,6 +125,9 @@ function CurriculumDetail({ userId, curriculumId }: { userId: string; curriculum
         <div><dt className="text-muted">Khóa</dt><dd>{c.cohort ?? "Chưa xác định"}</dd></div>
         <div><dt className="text-muted">Phiên bản</dt><dd>{c.revision ?? "Chưa xác định"}</dd></div>
       </dl>
+      {tracked ? <p className="mt-4 text-sm font-medium text-primary">Đang theo dõi trong AMS</p>
+        : <div className="mt-4 space-y-2"><p className="text-sm text-muted">AMS sẽ dùng chương trình này làm cơ sở cho các tính năng kế hoạch học tập sau này.</p>
+          <Button disabled={!canSelect} onClick={onSelect}>Đặt làm chương trình theo dõi</Button></div>}
     </section>
     <dl className="grid gap-3 sm:grid-cols-3">
       {[ ["Môn có liên kết đã lưu", c.courseCount], ["Nhóm môn đã lưu", c.groupCount], ["Tín chỉ quy định", c.minimumCredits] ].map(([label, value]) =>
@@ -102,7 +140,7 @@ function CurriculumDetail({ userId, curriculumId }: { userId: string; curriculum
       <ul className="grid gap-3 md:grid-cols-2">{groups.map((g) => <li key={g.id} className={`${panel} min-w-0 space-y-3`}>
         <div className="flex flex-wrap items-center gap-2"><span className="break-all text-xs text-muted">{g.code}</span><Requirement value={g.requirement} /></div>
         <h3 className="break-words font-medium">{g.name}</h3>
-        <dl className="space-y-1 text-sm"><div><dt className="inline text-muted">Tín chỉ tối thiểu: </dt><dd className="inline">{g.minimumCredits ?? "Chưa xác định"}</dd></div>
+        <dl className="space-y-1 text-sm"><div><dt className="inline text-muted">Tín chỉ tối thiểu của nhóm: </dt><dd className="inline">{g.minimumCredits ?? "Chưa xác định"}</dd></div>
           <div><dt className="inline text-muted">Số môn tối thiểu: </dt><dd className="inline">{g.minimumCourseCount ?? "Chưa xác định"}</dd></div></dl>
       </li>)}</ul>
       <More available={query.hasNextPage} busy={query.isFetchingNextPage} load={() => void query.fetchNextPage()} label="Tải thêm nhóm" />

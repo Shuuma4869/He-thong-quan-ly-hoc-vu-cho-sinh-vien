@@ -5,7 +5,10 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { CurriculumBrowser } from "./curriculum-browser";
 import * as api from "./api";
 
-vi.mock("./api", () => ({ getCurricula: vi.fn(), getCurriculum: vi.fn(), getCurriculumCourses: vi.fn(), getCatalogCourses: vi.fn() }));
+vi.mock("./api", async (importOriginal) => ({ ...(await importOriginal<typeof import("./api")>()),
+  getCurricula: vi.fn(), getCurriculum: vi.fn(), getCurriculumCourses: vi.fn(), getCatalogCourses: vi.fn(),
+  getCurriculumSelection: vi.fn(), selectCurriculum: vi.fn(), clearCurriculumSelection: vi.fn(),
+}));
 const id = "10000000-0000-4000-8000-000000000001";
 const secondId = "10000000-0000-4000-8000-000000000002";
 const curriculum: api.Curriculum = { id, code: "TEST", name: "Chương trình tổng hợp", cohort: null, revision: null, minimumCredits: 120, courseCount: 1, groupCount: 2 };
@@ -20,6 +23,10 @@ function show() {
   return render(<QueryClientProvider client={client}><CurriculumBrowser userId="synthetic-user" /></QueryClientProvider>);
 }
 beforeEach(() => {
+  vi.mocked(api.getCurriculumSelection).mockResolvedValue({ selectionMode: "USER_SELECTED_AMS", curriculum: null });
+  vi.mocked(api.selectCurriculum).mockImplementation(async (value) => ({ selectionMode: "USER_SELECTED_AMS",
+    curriculum: { ...curriculum, id: value } }));
+  vi.mocked(api.clearCurriculumSelection).mockResolvedValue({ selectionMode: "USER_SELECTED_AMS", curriculum: null });
   vi.mocked(api.getCurricula).mockResolvedValue({ items: [curriculum], nextCursor: null });
   vi.mocked(api.getCurriculum).mockResolvedValue(detail);
   vi.mocked(api.getCurriculumCourses).mockResolvedValue({ items: [course], nextCursor: null });
@@ -28,9 +35,54 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
 
 describe("Persisted curriculum browser", () => {
+  it("keeps a single curriculum unselected until the user chooses it", async () => {
+    show();
+    expect(await screen.findByText("Bạn chưa chọn chương trình để theo dõi.")).toBeInTheDocument();
+    expect(await screen.findByRole("button", { name: "Đặt làm chương trình theo dõi" })).toBeEnabled();
+    expect(api.selectCurriculum).not.toHaveBeenCalled();
+    await userEvent.click(screen.getByRole("button", { name: "Đặt làm chương trình theo dõi" }));
+    expect(await screen.findAllByText("Đang theo dõi trong AMS")).toHaveLength(2);
+    expect(screen.queryByText("Bạn chưa chọn chương trình để theo dõi.")).not.toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Bỏ chương trình theo dõi" }));
+    expect(await screen.findByText("Bạn chưa chọn chương trình để theo dõi.")).toBeInTheDocument();
+    expect(api.clearCurriculumSelection).toHaveBeenCalledOnce();
+  });
+  it("keeps tracked A visible while viewing B, then switches tracking to B", async () => {
+    const second = { ...curriculum, id: secondId, code: "CURR-B", name: "Chương trình kiểm thử B" };
+    vi.mocked(api.getCurricula).mockResolvedValue({ items: [curriculum, second], nextCursor: null });
+    vi.mocked(api.getCurriculum).mockImplementation(async (value) => ({ curriculum: value === secondId ? second : curriculum,
+      groups: { items: [], nextCursor: null } }));
+    vi.mocked(api.selectCurriculum).mockImplementation(async (value) => ({ selectionMode: "USER_SELECTED_AMS",
+      curriculum: value === secondId ? second : curriculum }));
+    show();
+    await userEvent.click(await screen.findByRole("button", { name: "Đặt làm chương trình theo dõi" }));
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Chọn chương trình để xem" }), secondId);
+    expect(await screen.findByRole("heading", { name: second.name })).toBeInTheDocument();
+    expect(screen.getByText(`${curriculum.code} — ${curriculum.name}`)).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Đặt làm chương trình theo dõi" }));
+    expect(await screen.findByText(`${second.code} — ${second.name}`)).toBeInTheDocument();
+  });
+  it("shows selected curriculum even when it is outside the loaded list page", async () => {
+    vi.mocked(api.getCurriculumSelection).mockResolvedValue({ selectionMode: "USER_SELECTED_AMS",
+      curriculum: { ...curriculum, id: secondId, code: "CURR-B", name: "Chương trình kiểm thử B" } });
+    show();
+    expect(await screen.findByText("CURR-B — Chương trình kiểm thử B")).toBeInTheDocument();
+    expect(api.getCurricula).toHaveBeenCalled();
+  });
+  it("shows a safe error for a missing curriculum and a retry for selection reads", async () => {
+    vi.mocked(api.getCurriculumSelection).mockRejectedValueOnce(new Error("private SQL"));
+    show();
+    expect(await screen.findByText("Chưa thể đọc dữ liệu đã lưu. Vui lòng thử lại.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Thử lại" }));
+    await screen.findByText("Bạn chưa chọn chương trình để theo dõi.");
+    vi.mocked(api.selectCurriculum).mockRejectedValueOnce(new (await import("@/features/auth/api")).ApiError(404, "private id"));
+    await userEvent.click(screen.getByRole("button", { name: "Đặt làm chương trình theo dõi" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Chương trình không còn tồn tại");
+    expect(document.body.textContent).not.toContain("private");
+  });
   it("shows a loading state", () => {
     vi.mocked(api.getCurricula).mockReturnValue(new Promise(() => {}));
-    show(); expect(screen.getByRole("status")).toHaveTextContent("Đang tải chương trình");
+    show(); expect(screen.getByText("Đang tải chương trình…")).toBeInTheDocument();
   });
   it("shows one curriculum directly, keeps unknowns, decimals and requirement labels", async () => {
     show();

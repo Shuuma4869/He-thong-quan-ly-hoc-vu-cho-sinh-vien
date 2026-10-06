@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
 import { ApiStatus } from "./api-status";
-import { getCurricula } from "@/features/curriculum/api";
+import { curriculumKeys, getCurriculumSelection } from "@/features/curriculum/api";
 import { getGoogleConnection } from "@/features/google-calendar/api";
 import { getCurrentRun, getPhenikaaConnection, readError, syncKeys } from "@/features/sync/api";
 import { localTime, runStatus } from "@/features/sync/presentation";
@@ -19,7 +19,7 @@ export function DashboardOverview({ userId }: { userId: string }) {
   const phenikaa = useQuery({ queryKey: syncKeys.phenikaa(userId), queryFn: ({ signal }) => getPhenikaaConnection(signal), retry: false });
   const google = useQuery({ queryKey: ["google-calendar-connection", userId], queryFn: ({ signal }) => getGoogleConnection(signal), retry: false });
   const current = useQuery({ queryKey: syncKeys.current(userId), queryFn: ({ signal }) => getCurrentRun(signal), retry: false });
-  const curricula = useQuery({ queryKey: ["curricula", userId, "availability"], queryFn: ({ signal }) => getCurricula(undefined, signal), retry: false, staleTime: 0 });
+  const selection = useQuery({ queryKey: curriculumKeys.selection(userId), queryFn: ({ signal }) => getCurriculumSelection(signal), retry: false, staleTime: 0 });
   const sourceDisabled = phenikaa.isSuccess && phenikaa.data === null;
 
   return <div className="space-y-8">
@@ -44,10 +44,12 @@ export function DashboardOverview({ userId }: { userId: string }) {
           : <><p>{runStatus[current.data.status]}</p><p className="text-sm text-muted">Yêu cầu lúc {localTime(current.data.requestedAt)}</p></>}
         <Link href="/sync" className="inline-block text-sm font-medium text-primary underline">Xem lịch sử</Link>
       </article>
-      <article className={card}><h2 className="font-semibold">Dữ liệu chương trình</h2>
-        {curricula.isPending ? <p>Đang đọc dữ liệu đã lưu…</p> : curricula.isError ? <><p role="alert">{readError(curricula.error, "Chưa thể đọc chương trình đã lưu.")}</p><Retry retry={() => void curricula.refetch()} /></>
-          : <p>{curricula.data.items.length ? "Dữ liệu chương trình đã có trong AMS." : "Chưa có chương trình được lưu."}</p>}
-        <Link href="/curriculum" className="inline-block text-sm font-medium text-primary underline">Xem Chương trình</Link>
+      <article className={card}><h2 className="font-semibold">Chương trình theo dõi</h2>
+        {selection.isPending ? <p>Đang đọc chương trình theo dõi…</p> : selection.isError ? <><p role="alert">{readError(selection.error, "Chưa thể đọc chương trình theo dõi.")}</p><Retry retry={() => void selection.refetch()} /></>
+          : selection.data.curriculum ? <><p className="break-words">{selection.data.curriculum.code} — {selection.data.curriculum.name}</p>
+            <p className="text-sm text-muted">Tín chỉ tối thiểu theo chương trình: {selection.data.curriculum.minimumCredits}</p></>
+          : <p>Chưa chọn chương trình theo dõi.</p>}
+        <Link href="/curriculum" className="inline-block text-sm font-medium text-primary underline">Mở Chương trình</Link>
       </article>
       <article className={card}><h2 className="font-semibold">Google Calendar</h2>
         {google.isPending ? <p>Đang kiểm tra…</p> : google.isError ? <><p role="alert">{readError(google.error, "Chưa thể kiểm tra Google Calendar.")}</p><Retry retry={() => void google.refetch()} /></>

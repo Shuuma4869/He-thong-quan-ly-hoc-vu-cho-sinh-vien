@@ -22,6 +22,7 @@ for (const mobile of [false, true]) {
       const url = new URL(route.request().url());
       expect(route.request().method()).toBe("GET");
       const pageData = (items: unknown[]) => ({ items, nextCursor: null });
+      if (url.pathname.endsWith("/curriculum-selection")) return route.fulfill({ json: { selectionMode: "USER_SELECTED_AMS", curriculum: null } });
       if (url.pathname.endsWith("/curricula")) return route.fulfill({ json: pageData(curricula) });
       if (url.pathname.endsWith("/catalog/courses")) return route.fulfill({ json: pageData([
         { id: first, code: "TEST999", name: "Môn danh mục tổng hợp", credits: 1.5, curriculumLinked: false },
@@ -58,5 +59,34 @@ for (const mobile of [false, true]) {
     expect(unexpected).toEqual([]);
     for (const phrase of ["Chương trình hiện tại", "Đã hoàn thành", "Còn thiếu", "Đủ điều kiện", "GPA"])
       await expect(page.locator("main")).not.toContainText(phrase);
+  });
+}
+
+for (const width of [1280, 375, 320]) {
+  test(`Theo dõi chương trình bằng dữ liệu tổng hợp ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 844 });
+    await createAccountAndLogin(page);
+    const csrf = await (await page.request.get("/api/auth/csrf")).json();
+    const seeded = await page.request.post("/api/me/test-fixtures/curricula", { headers: { [csrf.headerName]: csrf.token } });
+    expect(seeded.status()).toBe(204);
+    await page.goto("/curriculum");
+    await expect(page.getByText("Bạn chưa chọn chương trình để theo dõi.")).toBeVisible();
+    await page.getByLabel("Chọn chương trình để xem").selectOption({ label: "1. CURR-A — Chương trình kiểm thử A" });
+    await page.getByRole("button", { name: "Đặt làm chương trình theo dõi" }).click();
+    await expect(page.getByText("CURR-A — Chương trình kiểm thử A", { exact: true })).toBeVisible();
+    await page.getByLabel("Chọn chương trình để xem").selectOption({ label: "2. CURR-B — Chương trình kiểm thử B" });
+    await expect(page.getByText("CURR-A — Chương trình kiểm thử A", { exact: true })).toBeVisible();
+    await page.getByRole("button", { name: "Đặt làm chương trình theo dõi" }).click();
+    await expect(page.getByText("CURR-B — Chương trình kiểm thử B", { exact: true })).toBeVisible();
+    await page.reload();
+    await expect(page.getByText("CURR-B — Chương trình kiểm thử B", { exact: true })).toBeVisible();
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    await page.goto("/");
+    await expect(page.getByRole("article").filter({ hasText: "Chương trình theo dõi" }).getByText("CURR-B — Chương trình kiểm thử B")).toBeVisible();
+    await page.goto("/curriculum");
+    await page.getByRole("button", { name: "Bỏ chương trình theo dõi" }).click();
+    await expect(page.getByText("Bạn chưa chọn chương trình để theo dõi.")).toBeVisible();
+    await page.goto("/");
+    await expect(page.getByText("Chưa chọn chương trình theo dõi.")).toBeVisible();
   });
 }
