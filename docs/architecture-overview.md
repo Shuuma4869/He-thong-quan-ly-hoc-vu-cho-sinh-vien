@@ -157,6 +157,14 @@ Người xem chọn **Chương trình đang xem** khi nguồn trả nhiều lự
 
 Chi tiết tổng kết chỉ được gọi khi người xem mở một hàng. TanStack Query giữ dữ liệu tạm trong bộ nhớ theo user và reference để mở lại không gọi dồn nguồn; không ghi điểm vào localStorage, sessionStorage, Redis hay bảng học vụ. Reference chỉ dùng bên trong request/cache, không đưa vào URL trang hoặc nhãn giao diện. Các truy vấn không tự poll, refetch khi focus hoặc retry lỗi 429. Nút đọc lại là thao tác chủ động, và backend vẫn áp khoảng nghỉ giữa các lượt đọc. Test giao diện/E2E dùng dữ liệu tổng hợp; chúng không xác nhận đọc được một tài khoản Phenikaa thật.
 
+## Tổng hợp tích lũy do nguồn báo Phase 16C
+
+`GET /api/me/academic/source/progress-summary` không nhận ID chương trình từ trình duyệt. Service lấy chương trình người dùng đã chọn trong AMS bằng truy vấn ràng buộc `student_profile.user_id`, nối đúng mapping của hồ sơ và kiểm tra ID đó có mặt trong danh sách chương trình của kết nối nguồn hiện tại. Sau lượt HTTP, service đọc lại lựa chọn/mapping; nếu chúng đã đổi thì không trả kết quả cũ. Adapter còn kiểm tra thế hệ phiên bằng `authenticatedAt`. Các bước DB là truy vấn ngắn, không giữ transaction qua HTTP.
+
+Adapter chỉ dùng endpoint `KetQuaHocTapCaNhan` đã có để đọc bảng tổng hợp. Parser yêu cầu đúng một hàng tích lũy toàn cục cho mỗi thang 4 và 10; thiếu hàng, trùng hàng hoặc kiểu số không đúng đều không biến thành số 0 hay chọn hàng đầu. Giá trị tín chỉ lấy từ hàng thang 10 mà giao diện nguồn dùng cho nhãn tích lũy. Response chỉ có UUID/mã/tên curriculum AMS và ba số nguồn báo, với `mode=SOURCE_REPORTED_LIVE_READ_ONLY`, `completeness=UNKNOWN`. Không trả ID nguồn hay bảng thô, không lưu kết quả và không tính GPA/tín chỉ còn thiếu/phần trăm.
+
+Trang `/academic` đọc lựa chọn curriculum từ PostgreSQL, nhưng chỉ gọi tổng hợp nguồn khi người dùng bấm nút. Cache tạm gắn cả user và UUID curriculum; đổi lựa chọn sẽ ẩn số cũ, yêu cầu bấm đọc lại. Dashboard không gọi endpoint này. Test tự động dùng dữ liệu tổng hợp; chưa xác minh kiểu và giá trị trả về với một kết nối Phenikaa được cấp hợp lệ. Các giới hạn về nhóm, môn, `StudentCourse` và `AcademicResult` vẫn giữ nguyên.
+
 ## Lịch học và lịch thi đọc trực tiếp Phase 14A
 
 `/schedule` là trang cần đăng nhập. Trang kiểm tra kết nối Phenikaa và bảng khả năng nguồn trước khi mở thao tác đọc lịch. Kết nối mất hoặc trạng thái nguồn đổi sang cần kết nối lại sẽ chặn request tiếp theo. Người dùng tự chọn khoảng ngày rồi bấm **Đọc lịch**; lịch thi có bước đọc danh sách bộ lọc kỳ thi, chọn một kỳ rồi bấm **Đọc lịch thi**. Chuyển tab hoặc sửa ngày không tự gọi nguồn. Mỗi loại request có cooldown riêng theo user trong Redis; lỗi 429 không tự retry.

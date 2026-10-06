@@ -6,6 +6,8 @@
 
 > Phase 16B kiểm tra riêng các bảng tiến độ/tổng hợp mà cổng báo, không mở API hay màn hình mới. [Bằng chứng và quyết định về tiến độ do nguồn báo](academic-progress-evidence.md) tách giá trị nguồn trả về khỏi GPA/tín chỉ do AMS tự tính.
 
+> Phase 16C mở **một lát cắt** đọc tổng hợp tích lũy theo yêu cầu trên trang Học vụ. Backend tự đối chiếu chương trình theo dõi với ID nguồn và chỉ trả ba số nguồn báo; không tính tiến độ AMS hay lưu kết quả. Chưa có lượt kiểm chứng live mới với kết nối được cấp hợp lệ. Xem [hợp đồng và giới hạn](academic-progress-evidence.md#phase-16c-đọc-tổng-hợp-tích-lũy-theo-yêu-cầu).
+
 Tài liệu này ghi lại các lượt kiểm tra cổng QLĐT Phenikaa từ 18 đến 30/09/2026 và những việc cần làm rõ trước khi mở thêm khả năng kết nối cho AMS. Người tiếp tục phát triển có thể đọc phần đầu để hiểu hướng xử lý, rồi tra đường dẫn API và tên trường ở các phần sau.
 
 Phạm vi của phần Phase 3 bên dưới là khảo sát. Khi đó adapter chưa gọi HTTP hoặc nhập dữ liệu; không dùng nhận định lịch sử này để thay cho kết quả Phase 4A/4B ở cuối tài liệu.
