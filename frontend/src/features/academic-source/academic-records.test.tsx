@@ -6,9 +6,13 @@ import { AcademicRecords } from "./academic-records";
 import { AcademicSourceError, type Records, type SourceStatus } from "./api";
 import * as source from "./api";
 import * as sync from "@/features/sync/api";
+import * as curriculum from "@/features/curriculum/api";
 
 vi.mock("./api", async (importOriginal) => ({ ...(await importOriginal<typeof import("./api")>()),
-  getSourceStatus: vi.fn(), getPrograms: vi.fn(), getRecords: vi.fn(), getResultDetail: vi.fn(),
+  getSourceStatus: vi.fn(), getPrograms: vi.fn(), getRecords: vi.fn(), getResultDetail: vi.fn(), getProgressSummary: vi.fn(),
+}));
+vi.mock("@/features/curriculum/api", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/features/curriculum/api")>()),
+  getCurriculumSelection: vi.fn(),
 }));
 vi.mock("@/features/sync/api", async (importOriginal) => ({ ...(await importOriginal<typeof import("@/features/sync/api")>()),
   getPhenikaaConnection: vi.fn(),
@@ -42,9 +46,11 @@ const records: Records = { completeness: "UNKNOWN", unknownSemantics: {
 function show() {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: 300_000 } } });
   render(<QueryClientProvider client={client}><AcademicRecords userId="synthetic-user" /></QueryClientProvider>);
+  return client;
 }
 
 beforeEach(() => {
+  vi.mocked(curriculum.getCurriculumSelection).mockResolvedValue({ selectionMode: "USER_SELECTED_AMS", curriculum: null });
   vi.mocked(sync.getPhenikaaConnection).mockResolvedValue(connection);
   vi.mocked(source.getSourceStatus).mockResolvedValue(sourceStatus);
   vi.mocked(source.getPrograms).mockResolvedValue({ completeness: "UNKNOWN", programs: [
@@ -57,6 +63,92 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.resetAllMocks(); });
 
 describe("Live academic records", () => {
+  const tracked = { id: "00000000-0000-4000-8000-000000000001", code: "TEST", name: "Chương trình kiểm thử",
+    cohort: null, revision: null, minimumCredits: 100 };
+  const progress = { mode: "SOURCE_REPORTED_LIVE_READ_ONLY" as const, completeness: "UNKNOWN" as const,
+    selectionMode: "USER_SELECTED_AMS" as const,
+    curriculum: { id: tracked.id, code: tracked.code, name: tracked.name },
+    summary: { cumulativeAverageScale4: 3.25, cumulativeAverageScale10: 8.1, sourceAccumulatedCredits: 72 } };
+
+  it("requires a tracked curriculum without reading the source", async () => {
+    show();
+    expect(await screen.findByRole("link", { name: "Mở Chương trình" })).toHaveAttribute("href", "/curriculum");
+    expect(source.getProgressSummary).not.toHaveBeenCalled();
+  });
+
+  it("reads progress only after a click and keeps source semantics", async () => {
+    vi.mocked(curriculum.getCurriculumSelection).mockResolvedValue({ selectionMode: "USER_SELECTED_AMS", curriculum: tracked });
+    vi.mocked(source.getSourceStatus).mockResolvedValue({ ...sourceStatus, capabilities: [...sourceStatus.capabilities,
+      { capability: "ACADEMIC_PROGRESS_SUMMARY", mode: "LIVE_READ_ONLY", completeness: "UNKNOWN" }] });
+    vi.mocked(source.getProgressSummary).mockResolvedValue(progress);
+    show();
+    const button = await screen.findByRole("button", { name: "Đọc tổng hợp tích lũy từ nguồn" });
+    expect(source.getProgressSummary).not.toHaveBeenCalled();
+    await userEvent.click(button);
+    expect(await screen.findByText("Giá trị tín chỉ tích lũy — nguồn báo")).toBeInTheDocument();
+    expect(screen.getByText("AMS không tự tính các giá trị dưới đây. Độ đầy đủ của dữ liệu nguồn chưa được xác nhận.")).toBeInTheDocument();
+    expect(screen.getByText("3.25")).toBeInTheDocument();
+    expect(screen.getByText("8.1")).toBeInTheDocument();
+    expect(screen.getByText("72")).toBeInTheDocument();
+    expect(source.getProgressSummary).toHaveBeenCalledTimes(1);
+    for (const phrase of ["GPA AMS", "Tín chỉ đã đạt", "Tín chỉ còn thiếu", "% hoàn thành"])
+      expect(document.body.textContent).not.toContain(phrase);
+  });
+
+  it("does not show a cached summary after a failed manual reread", async () => {
+    vi.mocked(curriculum.getCurriculumSelection).mockResolvedValue({ selectionMode: "USER_SELECTED_AMS", curriculum: tracked });
+    vi.mocked(source.getSourceStatus).mockResolvedValue({ ...sourceStatus, capabilities: [...sourceStatus.capabilities,
+      { capability: "ACADEMIC_PROGRESS_SUMMARY", mode: "LIVE_READ_ONLY", completeness: "UNKNOWN" }] });
+    vi.mocked(source.getProgressSummary).mockResolvedValueOnce(progress)
+      .mockRejectedValueOnce(new AcademicSourceError(502, "SOURCE_SCHEMA_CHANGED"));
+    show();
+    const button = await screen.findByRole("button", { name: "Đọc tổng hợp tích lũy từ nguồn" });
+    await userEvent.click(button);
+    expect(await screen.findByText("Giá trị tín chỉ tích lũy — nguồn báo")).toBeInTheDocument();
+    await userEvent.click(button);
+    expect(await screen.findByRole("alert")).toHaveTextContent("thay đổi cấu trúc");
+    expect(screen.queryByText("Giá trị tín chỉ tích lũy — nguồn báo")).not.toBeInTheDocument();
+  });
+
+  it("does not allow progress read when capability or connection is missing", async () => {
+    vi.mocked(curriculum.getCurriculumSelection).mockResolvedValue({ selectionMode: "USER_SELECTED_AMS", curriculum: tracked });
+    show();
+    expect(await screen.findByText("Tổng hợp tích lũy trực tiếp hiện không khả dụng từ nguồn.")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Đọc tổng hợp tích lũy từ nguồn" })).not.toBeInTheDocument();
+    expect(source.getProgressSummary).not.toHaveBeenCalled();
+  });
+
+  it("drops the old summary when the tracked curriculum changes", async () => {
+    vi.mocked(curriculum.getCurriculumSelection).mockResolvedValue({ selectionMode: "USER_SELECTED_AMS", curriculum: tracked });
+    vi.mocked(source.getSourceStatus).mockResolvedValue({ ...sourceStatus, capabilities: [...sourceStatus.capabilities,
+      { capability: "ACADEMIC_PROGRESS_SUMMARY", mode: "LIVE_READ_ONLY", completeness: "UNKNOWN" }] });
+    vi.mocked(source.getProgressSummary).mockResolvedValue(progress);
+    const client = show();
+    await userEvent.click(await screen.findByRole("button", { name: "Đọc tổng hợp tích lũy từ nguồn" }));
+    expect(await screen.findByText("Giá trị tín chỉ tích lũy — nguồn báo")).toBeInTheDocument();
+    vi.mocked(curriculum.getCurriculumSelection).mockResolvedValue({ selectionMode: "USER_SELECTED_AMS",
+      curriculum: { ...tracked, id: "00000000-0000-4000-8000-000000000002", name: "Chương trình B" } });
+    await client.invalidateQueries({ queryKey: curriculum.curriculumKeys.selection("synthetic-user") });
+    expect(await screen.findByText("Chương trình B")).toBeInTheDocument();
+    expect(screen.queryByText("Giá trị tín chỉ tích lũy — nguồn báo")).not.toBeInTheDocument();
+  });
+
+  it.each([
+    ["CURRICULUM_SELECTION_REQUIRED", 409, "cần chọn chương trình"],
+    ["SOURCE_PROGRESS_UNAVAILABLE", 409, "Chưa thể đối chiếu"],
+    ["RATE_LIMITED", 429, "Vui lòng chờ"],
+    ["SOURCE_SCHEMA_CHANGED", 502, "thay đổi cấu trúc"],
+    ["SOURCE_DATA_INCOMPLETE", 502, "chưa nhất quán"],
+  ] as const)("shows safe progress error %s without retry", async (code, status, text) => {
+    vi.mocked(curriculum.getCurriculumSelection).mockResolvedValue({ selectionMode: "USER_SELECTED_AMS", curriculum: tracked });
+    vi.mocked(source.getSourceStatus).mockResolvedValue({ ...sourceStatus, capabilities: [...sourceStatus.capabilities,
+      { capability: "ACADEMIC_PROGRESS_SUMMARY", mode: "LIVE_READ_ONLY", completeness: "UNKNOWN" }] });
+    vi.mocked(source.getProgressSummary).mockRejectedValue(new AcademicSourceError(status, code));
+    show();
+    await userEvent.click(await screen.findByRole("button", { name: "Đọc tổng hợp tích lũy từ nguồn" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(text);
+    await waitFor(() => expect(source.getProgressSummary).toHaveBeenCalledTimes(1));
+  });
   it.each([null, "DISCONNECTED", "RECONNECTION_REQUIRED"] as const)("does not request source data when connection is %s", async (state) => {
     vi.mocked(sync.getPhenikaaConnection).mockResolvedValue(state === null ? null : { ...connection, status: state });
     show();

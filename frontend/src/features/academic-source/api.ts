@@ -68,6 +68,17 @@ const examsSchema = z.object({
     endsAt: z.iso.time().nullable(), room: z.string().nullable(),
   }).strict()),
 }).strict();
+const progressSummarySchema = z.object({
+  mode: z.literal("SOURCE_REPORTED_LIVE_READ_ONLY"),
+  completeness,
+  selectionMode: z.literal("USER_SELECTED_AMS"),
+  curriculum: z.object({ id: z.uuid(), code: z.string(), name: z.string() }).strict(),
+  summary: z.object({
+    cumulativeAverageScale4: z.number().finite().nonnegative(),
+    cumulativeAverageScale10: z.number().finite().nonnegative(),
+    sourceAccumulatedCredits: z.number().finite().nonnegative(),
+  }).strict(),
+}).strict();
 
 export type SourceStatus = z.infer<typeof statusSchema>;
 export type Programs = z.infer<typeof programsSchema>;
@@ -77,13 +88,16 @@ export type ResultDetail = z.infer<typeof detailSchema>;
 export type Schedule = z.infer<typeof scheduleSchema>;
 export type ExamPeriods = z.infer<typeof examPeriodsSchema>;
 export type Exams = z.infer<typeof examsSchema>;
+export type ProgressSummary = z.infer<typeof progressSummarySchema>;
 export type SourceErrorCode =
   | "CONNECTION_NOT_FOUND" | "RECONNECTION_REQUIRED" | "SOURCE_UNAVAILABLE" | "SOURCE_TIMEOUT"
-  | "SOURCE_SCHEMA_CHANGED" | "SOURCE_DATA_INCOMPLETE" | "INVALID_SOURCE_REFERENCE" | "INVALID_SOURCE_RANGE" | "RATE_LIMITED";
+  | "SOURCE_SCHEMA_CHANGED" | "SOURCE_DATA_INCOMPLETE" | "INVALID_SOURCE_REFERENCE" | "INVALID_SOURCE_RANGE" | "RATE_LIMITED"
+  | "CURRICULUM_SELECTION_REQUIRED" | "SOURCE_PROGRESS_UNAVAILABLE";
 
 const knownCode = z.enum([
   "CONNECTION_NOT_FOUND", "RECONNECTION_REQUIRED", "SOURCE_UNAVAILABLE", "SOURCE_TIMEOUT",
   "SOURCE_SCHEMA_CHANGED", "SOURCE_DATA_INCOMPLETE", "INVALID_SOURCE_REFERENCE", "INVALID_SOURCE_RANGE", "RATE_LIMITED",
+  "CURRICULUM_SELECTION_REQUIRED", "SOURCE_PROGRESS_UNAVAILABLE",
 ]);
 
 export class AcademicSourceError extends Error {
@@ -100,6 +114,7 @@ export const academicKeys = {
   schedule: (userId: string, from: string, through: string) => ["academic-source-schedule", userId, from, through] as const,
   examPeriods: (userId: string) => ["academic-source-exam-periods", userId] as const,
   exams: (userId: string, periodRef: string) => ["academic-source-exams", userId, periodRef] as const,
+  progressSummary: (userId: string, curriculumId: string) => ["academic-progress-summary", userId, curriculumId] as const,
 };
 
 async function read<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
@@ -126,6 +141,7 @@ export const getSchedule = (from: string, through: string, signal?: AbortSignal)
 export const getExamPeriods = (signal?: AbortSignal) => read("exams/periods", examPeriodsSchema, signal);
 export const getExams = (ref: string, signal?: AbortSignal) =>
   read(`exams?periodRef=${encodeURIComponent(examPeriodRef.parse(ref))}`, examsSchema, signal);
+export const getProgressSummary = (signal?: AbortSignal) => read("progress-summary", progressSummarySchema, signal);
 
 const messages: Record<SourceErrorCode, string> = {
   CONNECTION_NOT_FOUND: "Chưa có kết nối học vụ có thể sử dụng.",
@@ -137,6 +153,8 @@ const messages: Record<SourceErrorCode, string> = {
   SOURCE_UNAVAILABLE: "Nguồn học vụ tạm thời không sẵn sàng.",
   INVALID_SOURCE_REFERENCE: "Dữ liệu đã thay đổi; hãy đọc lại danh sách.",
   INVALID_SOURCE_RANGE: "Khoảng ngày phải hợp lệ và không vượt quá 31 ngày.",
+  CURRICULUM_SELECTION_REQUIRED: "Bạn cần chọn chương trình theo dõi trước khi đọc tổng hợp tích lũy.",
+  SOURCE_PROGRESS_UNAVAILABLE: "Chưa thể đối chiếu chương trình theo dõi với dữ liệu tổng hợp từ nguồn.",
 };
 
 export function sourceErrorMessage(error: Error, referenceKind?: "exam-period"): string {

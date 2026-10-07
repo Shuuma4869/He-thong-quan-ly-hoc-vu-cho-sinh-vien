@@ -32,6 +32,12 @@ public class AcademicSourceController {
         return queries.programs(principal.getUserId());
     }
 
+    @Operation(summary = "Đọc tổng hợp tích lũy do nguồn báo", description = "Chỉ đọc trực tiếp cho chương trình theo dõi đã ánh xạ; AMS không tự tính điểm hay tín chỉ.")
+    @GetMapping("/progress-summary")
+    public ProgressSummaryView progressSummary(@AuthenticationPrincipal AccountPrincipal principal) {
+        return queries.progressSummary(principal.getUserId());
+    }
+
     @Operation(summary = "Đọc kết quả học tập trực tiếp", description = "Chỉ là dữ liệu quan sát; không tạo lần học hay kết quả đã lưu.")
     @GetMapping("/records")
     public RecordsView records(@AuthenticationPrincipal AccountPrincipal principal,

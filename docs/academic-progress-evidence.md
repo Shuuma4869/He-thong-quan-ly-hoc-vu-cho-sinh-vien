@@ -1,5 +1,7 @@
 # Tiến độ học tập do nguồn báo: bằng chứng Phase 16B
 
+> Ghi chú sau Phase 16C: phần nghiên cứu 16B bên dưới được giữ đúng theo thời điểm viết, gồm các gate `PARTIAL`/`BLOCKED`. Phase 16C đã thêm một API và nút đọc **tổng hợp tích lũy do nguồn báo**, không mở tiến độ theo môn/nhóm và chưa kiểm chứng live với kết nối được cấp hợp lệ. Xem [phần triển khai 16C](#phase-16c-đọc-tổng-hợp-tích-lũy-theo-yêu-cầu).
+
 ## Kết luận để đọc trước
 
 **`PHASE_16B_OVERALL = PARTIAL`; `PROGRESS_LIVE_READ_ONLY_READY = PARTIAL`.** Cổng Phenikaa có các bảng tổng hợp tín chỉ, điểm trung bình và khối kiến thức mà AMS chưa đọc qua contract hiện tại. Mã giao diện công khai cho biết endpoint, tên bảng và cách trang điểm chọn một số hàng để hiển thị; các lượt kiểm tra hợp lệ ở Phase 5A–5D đã quan sát dữ liệu ở những phần này. Tuy nhiên, trong Phase 16B không có kết nối Phenikaa được cấp hợp lệ để kiểm tra lại response, kiểu giá trị, các trường hợp nhiều chương trình và sự thay đổi theo thời gian. **Chưa mở API hay giao diện tiến độ.**
@@ -100,3 +102,15 @@ Nếu lập contract ở Phase 16C, response phải ghi rõ `mode = SOURCE_REPOR
 Không tính `minimumCredits - sourceAccumulated`, không tạo tiến độ %, không suy tốt nghiệp hay điều kiện tiên quyết. `StudentCourse` vẫn bị chặn vì chưa có khóa lần học xuyên suốt, đặc biệt khi nhiều đăng ký cùng góp một tổng kết. `AcademicResult` vẫn bị chặn vì chưa chọn được kết quả hiệu lực và thiếu tín chỉ đạt/GPA inclusion cho từng lần học. Việc đọc một số tổng hợp do server trả **không** tháo hai blocker đó. `STUDENTCOURSE_MAPPING = UNCHANGED_BLOCKED`; `ACADEMICRESULT_PERSISTENCE = UNCHANGED_BLOCKED`.
 
 Phase 16B dừng ở tài liệu. Để nâng `PARTIAL`, cần một kết nối được cấp hợp lệ cho chính tài khoản, chỉ đọc metadata/kiểu/cardinality của các bảng qua luồng bảo mật hiện có; xác minh mapping ở trường hợp nhiều chương trình và đối chiếu các scope. Không cần người dùng gửi token, cookie hay điểm thật. Không lưu raw response, HAR hoặc ảnh màn hình.
+
+## Phase 16C: đọc tổng hợp tích lũy theo yêu cầu
+
+Phase 16C triển khai `GET /api/me/academic/source/progress-summary`. Endpoint không nhận query parameter để chọn chương trình: user phải có chương trình theo dõi trong AMS, chương trình đó phải có mapping nguồn của **chính hồ sơ**, và ID mapping phải khớp đúng một chương trình trong danh sách nguồn hiện tại. Nếu thiếu lựa chọn, API trả `CURRICULUM_SELECTION_REQUIRED` (409); nếu thiếu mapping hoặc chương trình không còn trong danh sách, trả `SOURCE_PROGRESS_UNAVAILABLE` (409). Không ghép theo tên/mã và không tự chọn chương trình duy nhất.
+
+Backend đọc lại lựa chọn và mapping sau HTTP để tránh trả số của chương trình A khi người dùng vừa đổi sang B. Adapter kiểm tra lại chương trình trong phiên hiện tại và dùng cơ chế `authenticatedAt` để không trả dữ liệu từ phiên đã bị thay thế. Redis chỉ giữ cooldown theo user và khả năng `PROGRESS_SUMMARY`, không cache nội dung. Không có transaction cơ sở dữ liệu kéo dài qua HTTP.
+
+Parser chỉ đọc `rsDiemTrungBinhChung` của `KetQuaHocTapCaNhan`. Nó chọn hàng có kỳ `null`, loại `TRUNGBINHTICHLUY`, cờ số `0`, thang chuỗi `"4"` hoặc `"10"`; mỗi thang phải có đúng một hàng. Thiếu hàng trả `SOURCE_PROGRESS_UNAVAILABLE`; hàng trùng hoặc giá trị sai cấu trúc trả lỗi dữ liệu nguồn, không chọn hàng đầu. `DIEMTRUNGBINH` và `TONGSOTINCHI` chỉ nhận JSON number không âm, hữu hạn và nằm trong giới hạn bảo thủ; không làm tròn. Tín chỉ tích lũy lấy từ `TONGSOTINCHI` của hàng thang 10, đúng hàng mà mã giao diện nguồn dùng cho nhãn tích lũy. Đây là quy tắc đọc được từ mã nguồn portal, **không** phải xác minh kiểu dữ liệu ở mọi tài khoản; nếu live response khác, cần báo mismatch trước khi nới parser.
+
+Response có `mode=SOURCE_REPORTED_LIVE_READ_ONLY`, `completeness=UNKNOWN`, `selectionMode=USER_SELECTED_AMS`, UUID/mã/tên curriculum AMS và ba số: điểm trung bình tích lũy thang 4, thang 10, giá trị tín chỉ tích lũy. Không có source ID, profile ID, learner ID hay bảng thô. Trang `/academic` chỉ đọc khi người dùng bấm **Đọc tổng hợp tích lũy từ nguồn**; đổi chương trình theo dõi sẽ ẩn kết quả cũ. Dashboard không tự gọi nguồn. Không ghi số này vào PostgreSQL, Redis, snapshot, `StudentCourse` hoặc `AcademicResult`.
+
+Các gate của Phase 16B **không tự nâng lên VERIFIED**. `PROGRESS_COMPLETENESS = UNKNOWN`; hoàn thành môn, tiến độ nhóm, yêu cầu tốt nghiệp, tín chỉ còn thiếu, phần trăm tiến độ và GPA do AMS tính vẫn chưa triển khai hoặc còn bị chặn như bảng quyết định phía trên. Kiểm thử tự động chỉ dùng dữ liệu tổng hợp; `LIVE_PROGRESS_SUMMARY = NOT_RUN_NO_PROVISIONED_CONNECTION` cho đến khi có kết nối hợp lệ để kiểm chứng mà không lưu giá trị cá nhân.

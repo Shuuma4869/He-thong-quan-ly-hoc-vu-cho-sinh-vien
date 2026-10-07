@@ -6,6 +6,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -21,14 +22,17 @@ import static org.mockito.Mockito.*;
 class AcademicSourceQueryServiceTest {
     @Mock AcademicPortalClient portal;
     @Mock AcademicReadGate gate;
+    @Mock TrackedCurriculumResolver trackedCurricula;
     private AcademicSourceQueryService queries;
     private final UUID owner = UUID.randomUUID();
     private final UUID other = UUID.randomUUID();
     private final AcademicPortalClient.StudentConnectionId connection =
             new AcademicPortalClient.StudentConnectionId(UUID.randomUUID());
     private final AcademicProgram program = new AcademicProgram("private-program-id", "Chương trình giả định");
+    private final TrackedCurriculumResolver.TrackedCurriculumSource selected =
+            new TrackedCurriculumResolver.TrackedCurriculumSource(UUID.randomUUID(), "TEST", "Chương trình kiểm thử", program.sourceId());
 
-    @BeforeEach void setup() { queries = new AcademicSourceQueryService(portal, gate); }
+    @BeforeEach void setup() { queries = new AcademicSourceQueryService(portal, gate, trackedCurricula); }
 
     private void connected(UUID user) {
         when(gate.tryAcquire(eq(user), any())).thenReturn(true);
@@ -172,11 +176,84 @@ class AcademicSourceQueryServiceTest {
                 && item.mode().equals("LIVE_READ_ONLY") && item.completeness().equals("UNKNOWN"));
         assertThat(status.capabilities()).anyMatch(item -> item.capability().equals("EXAMS")
                 && item.mode().equals("LIVE_READ_ONLY") && item.completeness().equals("UNKNOWN"));
+        assertThat(status.capabilities()).anyMatch(item -> item.capability().equals("ACADEMIC_PROGRESS_SUMMARY")
+                && item.mode().equals("LIVE_READ_ONLY") && item.completeness().equals("UNKNOWN"));
         assertThat(status.capabilities()).anyMatch(item -> item.capability().equals("CLASS_SESSION")
                 && item.mode().equals("BLOCKED_SOURCE_LIMIT"));
         assertThat(status.capabilities()).anyMatch(item -> item.capability().equals("EXAM_PERSISTENCE")
                 && item.mode().equals("BLOCKED_SOURCE_LIMIT"));
         verify(portal, never()).fetchAcademicRecords(any(), any(), any());
+    }
+
+    private AcademicProgressSummaryObservation progress(AcademicProgram sourceProgram) {
+        return new AcademicProgressSummaryObservation(sourceProgram, new BigDecimal("3.25"),
+                new BigDecimal("8.10"), new BigDecimal("72"));
+    }
+
+    @Test void progressNeedsSelectionAndExactMappingBeforeReadingSource() {
+        connected(owner);
+        assertThatThrownBy(() -> queries.progressSummary(owner)).hasMessage("CURRICULUM_SELECTION_REQUIRED");
+        when(trackedCurricula.resolve(owner)).thenReturn(Optional.of(new TrackedCurriculumResolver.TrackedCurriculumSource(
+                selected.curriculumId(), selected.code(), selected.name(), null)));
+        assertThatThrownBy(() -> queries.progressSummary(owner)).hasMessage("SOURCE_PROGRESS_UNAVAILABLE");
+        verify(portal, never()).fetchAcademicPrograms(any(), any());
+    }
+
+    @Test void progressDoesNotFallBackToMatchingLabelOrAnotherProgram() {
+        connected(owner);
+        when(trackedCurricula.resolve(owner)).thenReturn(Optional.of(selected));
+        when(portal.fetchAcademicPrograms(owner, connection)).thenReturn(List.of(
+                new AcademicProgram("different-id", program.label())));
+        assertThatThrownBy(() -> queries.progressSummary(owner)).hasMessage("SOURCE_PROGRESS_UNAVAILABLE");
+        verify(portal, never()).fetchAcademicProgressSummary(any(), any(), any());
+    }
+
+    @Test void progressReturnsOnlyLocalCurriculumAndSourceReportedValues() {
+        connected(owner);
+        when(trackedCurricula.resolve(owner)).thenReturn(Optional.of(selected));
+        when(portal.fetchAcademicPrograms(owner, connection)).thenReturn(List.of(program));
+        when(portal.fetchAcademicProgressSummary(owner, connection, program)).thenReturn(progress(program));
+        var view = queries.progressSummary(owner);
+        assertThat(view.mode()).isEqualTo("SOURCE_REPORTED_LIVE_READ_ONLY");
+        assertThat(view.completeness()).isEqualTo("UNKNOWN");
+        assertThat(view.selectionMode()).isEqualTo("USER_SELECTED_AMS");
+        assertThat(view.curriculum().id()).isEqualTo(selected.curriculumId());
+        assertThat(view.summary().sourceAccumulatedCredits()).isEqualByComparingTo("72");
+        assertThat(view.toString()).doesNotContain(program.sourceId(), "3.25", "72");
+        assertThat(view.summary().toString()).doesNotContain("3.25", "72");
+        verify(gate).tryAcquire(owner, AcademicReadGate.Capability.PROGRESS_SUMMARY);
+    }
+
+    @Test void progressRejectsChangedSelectionMappingAndObservationProgram() {
+        connected(owner);
+        when(trackedCurricula.resolve(owner)).thenReturn(Optional.of(selected));
+        when(portal.fetchAcademicPrograms(owner, connection)).thenReturn(List.of(program));
+        when(portal.fetchAcademicProgressSummary(owner, connection, program))
+                .thenReturn(progress(new AcademicProgram("different-id", "Khác")));
+        assertThatThrownBy(() -> queries.progressSummary(owner)).hasMessage("SOURCE_DATA_INCOMPLETE");
+        when(portal.fetchAcademicProgressSummary(owner, connection, program)).thenReturn(progress(program));
+        var changed = new TrackedCurriculumResolver.TrackedCurriculumSource(UUID.randomUUID(), "OTHER", "Khác", program.sourceId());
+        when(trackedCurricula.resolve(owner)).thenReturn(Optional.of(selected), Optional.of(changed));
+        assertThatThrownBy(() -> queries.progressSummary(owner)).hasMessage("SOURCE_PROGRESS_UNAVAILABLE");
+        var remapped = new TrackedCurriculumResolver.TrackedCurriculumSource(selected.curriculumId(), "TEST", "Test", "remapped-id");
+        when(trackedCurricula.resolve(owner)).thenReturn(Optional.of(selected), Optional.of(remapped));
+        assertThatThrownBy(() -> queries.progressSummary(owner)).hasMessage("SOURCE_PROGRESS_UNAVAILABLE");
+    }
+
+    @Test void progressUsesSeparateCooldownAndMapsSourceFailures() {
+        connected(owner);
+        when(trackedCurricula.resolve(owner)).thenReturn(Optional.of(selected));
+        when(portal.fetchAcademicPrograms(owner, connection)).thenReturn(List.of(program));
+        when(portal.fetchAcademicProgressSummary(owner, connection, program))
+                .thenThrow(new AcademicProgressSummaryUnavailable())
+                .thenThrow(new AcademicPortalException(AcademicPortalException.Code.TIMEOUT))
+                .thenThrow(new AcademicPortalException(AcademicPortalException.Code.UNEXPECTED_SCHEMA));
+        assertThatThrownBy(() -> queries.progressSummary(owner)).hasMessage("SOURCE_PROGRESS_UNAVAILABLE");
+        assertThatThrownBy(() -> queries.progressSummary(owner)).hasMessage("SOURCE_TIMEOUT");
+        assertThatThrownBy(() -> queries.progressSummary(owner)).hasMessage("SOURCE_SCHEMA_CHANGED");
+        when(gate.tryAcquire(owner, AcademicReadGate.Capability.PROGRESS_SUMMARY)).thenReturn(false);
+        assertThatThrownBy(() -> queries.progressSummary(owner)).hasMessage("RATE_LIMITED");
+        verify(portal, times(3)).fetchAcademicProgressSummary(owner, connection, program);
     }
 
     @Test void schedulePreservesDuplicateObservationsNullsAndSourceLimits() {

@@ -12,9 +12,10 @@ import vn.edu.phenikaa.ams.academic.application.CatalogPageRequest;
 import vn.edu.phenikaa.ams.academic.application.CurriculumQueryService.*;
 import vn.edu.phenikaa.ams.academic.application.CurriculumSelectionService.SelectedCurriculumView;
 import vn.edu.phenikaa.ams.academic.domain.CurriculumCourse.Requirement;
+import vn.edu.phenikaa.ams.academic.application.port.TrackedCurriculumResolver;
 
 @Repository
-public class CurriculumReadRepository {
+public class CurriculumReadRepository implements TrackedCurriculumResolver {
     private static final String CURRICULA = """
             select c.id, c.code, c.name, c.cohort, c.revision, c.minimum_credits,
               (select count(*) from curriculum_course m where m.profile_id = c.profile_id and m.curriculum_id = c.id) course_count,
@@ -41,6 +42,19 @@ public class CurriculumReadRepository {
                 """, new MapSqlParameterSource("userId", userId),
                 (r, n) -> new SelectedCurriculumView(uuid(r, "id"), r.getString("code"), r.getString("name"),
                         r.getString("cohort"), r.getString("revision"), r.getBigDecimal("minimum_credits")))
+                .stream().findFirst();
+    }
+
+    @Override public Optional<TrackedCurriculumSource> resolve(UUID userId) {
+        return jdbc.query("""
+                select c.id, c.code, c.name, m.source_curriculum_id
+                from student_profile p
+                join curriculum c on c.profile_id = p.id and c.id = p.curriculum_id
+                left join phenikaa_curriculum_mapping m on m.profile_id = p.id and m.curriculum_id = c.id
+                where p.user_id = :userId
+                """, new MapSqlParameterSource("userId", userId),
+                (r, n) -> new TrackedCurriculumSource(uuid(r, "id"), r.getString("code"),
+                        r.getString("name"), r.getString("source_curriculum_id")))
                 .stream().findFirst();
     }
 

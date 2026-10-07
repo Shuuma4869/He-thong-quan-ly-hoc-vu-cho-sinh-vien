@@ -9,6 +9,7 @@ import vn.edu.phenikaa.ams.academic.application.ProfileImportService;
 import vn.edu.phenikaa.ams.academic.application.AcademicSourceQueryService;
 import vn.edu.phenikaa.ams.academic.application.port.AcademicReadGate;
 import vn.edu.phenikaa.ams.academic.infrastructure.StudentProfileRepository;
+import vn.edu.phenikaa.ams.academic.infrastructure.CurriculumReadRepository;
 import vn.edu.phenikaa.ams.user.infrastructure.UserRepository;
 
 @Configuration(proxyBeanMethods = false)
@@ -21,8 +22,9 @@ public class PhenikaaConfiguration {
     }
 
     @Bean
-    AcademicSourceQueryService academicSourceQueryService(PhenikaaAcademicPortalClient portal, AcademicReadGate gate) {
-        return new AcademicSourceQueryService(portal, gate);
+    AcademicSourceQueryService academicSourceQueryService(PhenikaaAcademicPortalClient portal, AcademicReadGate gate,
+                                                          CurriculumReadRepository trackedCurricula) {
+        return new AcademicSourceQueryService(portal, gate, trackedCurricula);
     }
 
     @Bean

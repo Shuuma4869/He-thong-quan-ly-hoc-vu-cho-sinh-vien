@@ -115,6 +115,26 @@ class PhenikaaAcademicHttpTest {
         assertThat(result.entries()).extracting(AcademicRecordObservation.Entry::sourcePeriodId).doesNotHaveDuplicates();
         assertThat(paths).hasSize(5);
     }
+    @Test void readsOnlyProgressSummaryFromExistingRecordsEndpoint() {
+        records = """
+                {"rsDiemTrungBinhChung":[
+                  {"DAOTAO_THOIGIANDAOTAO_ID":null,"LOAIDIEMTRUNGBINH_MA":"TRUNGBINHTICHLUY",
+                   "THUOCTINHLANTINH":0,"THANGDIEM_MA":"4","DIEMTRUNGBINH":3.25},
+                  {"DAOTAO_THOIGIANDAOTAO_ID":null,"LOAIDIEMTRUNGBINH_MA":"TRUNGBINHTICHLUY",
+                   "THUOCTINHLANTINH":0,"THANGDIEM_MA":"10","DIEMTRUNGBINH":8.10,"TONGSOTINCHI":72}]}
+                """;
+        var summary = client.fetchAcademicProgressSummary(session, program);
+        assertThat(summary.cumulativeAverageScale4()).isEqualByComparingTo("3.25");
+        assertThat(summary.sourceAccumulatedCredits()).isEqualByComparingTo("72");
+        assertThat(paths).containsExactly(PhenikaaHttpTransport.ACADEMIC_PROGRAMS_PATH,
+                PhenikaaHttpTransport.ACADEMIC_RECORDS_PATH);
+        assertThat(paths).doesNotContain(PhenikaaHttpTransport.ACADEMIC_REGISTRATIONS_PATH);
+    }
+    @Test void summaryRejectsProgramNotInCurrentSourceList() {
+        assertThatThrownBy(() -> client.fetchAcademicProgressSummary(session,
+                new AcademicProgram("foreign-program", program.label()))).hasMessage("UNEXPECTED_SCHEMA");
+        assertThat(paths).containsExactly(PhenikaaHttpTransport.ACADEMIC_PROGRAMS_PATH);
+    }
     @Test void emptyResultDoesNotInventEntriesOrCompleteness() {
         records = AcademicSourceFixtures.records("", "");
         registrations = "{\"rsKetQuaDangKy\":[]}";
