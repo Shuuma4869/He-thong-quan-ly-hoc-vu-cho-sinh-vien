@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { getStudyPlan, planCourse, removePlannedCourse } from "./api";
+import { clearStudyPlanScenario, copyStudyPlanScenario, getStudyPlan, getStudyPlanScenarios,
+  planCourse, removePlannedCourse } from "./api";
 import * as auth from "@/features/auth/api";
 
 vi.mock("@/features/auth/api", async (original) => ({ ...(await original<typeof import("@/features/auth/api")>()),
@@ -9,7 +10,7 @@ afterEach(() => { vi.unstubAllGlobals(); vi.resetAllMocks(); });
 
 const curriculumId = "00000000-0000-4000-8000-000000000001";
 const courseId = "00000000-0000-4000-8000-000000000002";
-const plan = { mode: "USER_PLANNED_AMS", curriculum: { id: curriculumId, code: "CURR-A", name: "Chương trình kiểm thử" },
+const plan = { mode: "USER_PLANNED_AMS", scenarioNo: 1, curriculum: { id: curriculumId, code: "CURR-A", name: "Chương trình kiểm thử" },
   terms: [{ plannedTerm: 1, courseCount: 1, plannedCredits: 3.25, courses: [{ courseId, code: "TEST101",
     name: "Môn kiểm thử", credits: 3.25, requirement: "REQUIRED", groupName: null }] }] };
 
@@ -18,12 +19,26 @@ describe("Study plan API", () => {
     const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify(plan)));
     vi.stubGlobal("fetch", fetcher);
     expect(await getStudyPlan()).toEqual(plan);
-    expect(fetcher).toHaveBeenCalledWith("/api/me/academic/study-plan",
+    expect(fetcher).toHaveBeenCalledWith("/api/me/academic/study-plan?scenario=1",
       expect.objectContaining({ credentials: "same-origin", cache: "no-store" }));
   });
 
+  it("rejects a scenario mismatch and reads five strict summaries", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(plan))));
+    await expect(getStudyPlan(2)).rejects.toThrow("mismatch");
+    const summaries = { mode: "USER_PLANNED_AMS", curriculum: plan.curriculum,
+      scenarios: [1, 2, 3, 4, 5].map((scenarioNo) => ({
+        scenarioNo, courseCount: 0, termCount: 0, plannedCredits: 0,
+      })) };
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify(summaries))));
+    expect((await getStudyPlanScenarios()).scenarios).toHaveLength(5);
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue(new Response(JSON.stringify({ ...summaries,
+      scenarios: [summaries.scenarios[0], summaries.scenarios[0]] }))));
+    await expect(getStudyPlanScenarios()).rejects.toThrow();
+  });
+
   it.each([
-    { mode: "SOURCE_PROGRESS" }, { sourceId: "private" },
+    { mode: "SOURCE_PROGRESS" }, { sourceId: "private" }, { scenarioNo: 0 },
     { terms: [{ ...plan.terms[0], plannedTerm: 0 }] },
     { terms: [{ ...plan.terms[0], plannedCredits: -1 }] },
     { terms: [{ ...plan.terms[0], courses: [{ ...plan.terms[0].courses[0], sourceCourseId: "private" }] }] },
@@ -34,14 +49,28 @@ describe("Study plan API", () => {
 
   it("uses CSRF mutation convention and validates the local ordinal", async () => {
     vi.mocked(auth.authMutation).mockResolvedValue(new Response(null, { status: 204 }));
-    await planCourse(curriculumId, courseId, 99);
+    await planCourse(curriculumId, courseId, 99, 2);
     expect(auth.authMutation).toHaveBeenCalledWith(
-      `/api/me/academic/study-plan/curricula/${curriculumId}/courses/${courseId}`,
+      `/api/me/academic/study-plan/curricula/${curriculumId}/courses/${courseId}?scenario=2`,
       JSON.stringify({ plannedTerm: 99 }), "PUT");
-    await removePlannedCourse(curriculumId, courseId);
+    await removePlannedCourse(curriculumId, courseId, 2);
     expect(auth.authMutation).toHaveBeenLastCalledWith(
-      `/api/me/academic/study-plan/curricula/${curriculumId}/courses/${courseId}`, "{}", "DELETE");
+      `/api/me/academic/study-plan/curricula/${curriculumId}/courses/${courseId}?scenario=2`, "{}", "DELETE");
     for (const invalid of [0, 100, 2.5]) await expect(planCourse(curriculumId, courseId, invalid)).rejects.toThrow();
+    for (const invalid of [0, 6, 2.5]) await expect(planCourse(curriculumId, courseId, 1, invalid)).rejects.toThrow();
+    expect(auth.authMutation).toHaveBeenCalledTimes(2);
+  });
+
+  it("uses CSRF for copy and clear without accepting invalid scenarios", async () => {
+    vi.mocked(auth.authMutation).mockResolvedValue(new Response(null, { status: 204 }));
+    await copyStudyPlanScenario(1, 5);
+    expect(auth.authMutation).toHaveBeenCalledWith("/api/me/academic/study-plan/scenarios/5/copy",
+      JSON.stringify({ sourceScenario: 1 }), "POST");
+    await clearStudyPlanScenario(5);
+    expect(auth.authMutation).toHaveBeenLastCalledWith("/api/me/academic/study-plan/scenarios/5", "{}", "DELETE");
+    for (const values of [[1, 1], [0, 2], [1, 6], [2.5, 3]])
+      await expect(copyStudyPlanScenario(values[0], values[1])).rejects.toThrow();
+    await expect(clearStudyPlanScenario(0)).rejects.toThrow();
     expect(auth.authMutation).toHaveBeenCalledTimes(2);
   });
 });
