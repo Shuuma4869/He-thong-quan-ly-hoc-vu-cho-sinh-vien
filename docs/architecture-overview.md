@@ -73,6 +73,14 @@ Frontend `/curriculum` đi qua protected layout và `requireCurrentUser`. Featur
 
 `USER_SELECTED_AMS` có nghĩa là người dùng tự đặt mốc để các tính năng kế hoạch sau này tham chiếu. Nó không chứng minh chương trình hiện hành của nguồn. `minimumCredits` và các yêu cầu nhóm là mức quy định của chương trình đã lưu, chưa phải tín chỉ còn thiếu. Phase này chưa tạo `StudentCourse`, `AcademicResult`, phép tính điểm hoặc phần trăm tiến độ. Cả ba endpoint chọn/đọc/bỏ chọn chỉ dùng PostgreSQL, kể cả khi tích hợp Phenikaa đang tắt.
 
+### Kế hoạch học kỳ cá nhân (Phase 17A)
+
+`/planner` dùng chương trình người dùng đã chọn làm mốc, nhưng chỉ đọc và ghi dữ liệu AMS trong PostgreSQL. `StudyPlanService` kiểm tra tài khoản ACTIVE và hồ sơ của user hiện tại. GET đọc lựa chọn và các assignment trong một transaction chỉ đọc; nếu chưa chọn thì trả curriculum null và danh sách kỳ rỗng. PUT/DELETE khóa hàng `student_profile` trước khi kiểm tra curriculum đang chọn và môn thuộc chương trình đó. Vì thao tác đổi lựa chọn cũng cập nhật hàng này, hai thao tác được tuần tự hóa; khóa ngoại ghép và unique constraint của V12 là lớp bảo vệ ở database.
+
+`plannedTerm` chỉ là số thứ tự local 1–99, không phải `Semester` hoặc kỳ nguồn. Một môn chỉ có một assignment cho mỗi curriculum; chuyển kỳ cập nhật hàng cũ, bỏ môn chỉ xóa assignment. Đổi hoặc bỏ lựa chọn theo dõi không xóa plan cũ. GET nối curriculum/môn đã lưu để đọc tên, loại yêu cầu và tín chỉ hiện tại; tổng tín chỉ từng kỳ là tổng tín chỉ **dự kiến** của các môn user xếp, không phải tín chỉ đã đạt hay tiến độ. Dữ liệu nguồn và `recommendedTerm` không tự tạo hoặc sửa kế hoạch. API giới hạn 1.000 assignment, vượt giới hạn sẽ báo lỗi thay vì trả thiếu hàng. [Hướng dẫn kế hoạch](study-planner.md) ghi cách dùng và giới hạn.
+
+Frontend tìm môn qua API curriculum đã phân trang, dùng CSRF cho PUT/DELETE, ẩn plan cũ trong lúc đọc lại lựa chọn và không thêm mục thứ sáu vào thanh mobile. Planner không gọi Phenikaa, Google Calendar hay email; không tạo `StudentCourse`, `AcademicResult`, học kỳ hoặc engine tiên quyết/xung đột lịch.
+
 Domain học vụ nằm trong `academic.domain`, change nằm trong `sync.domain`. Không có parser hoặc import adapter trong domain. Các tham chiếu dùng UUID nội bộ; catalog và kết quả được scope theo StudentProfile với composite FK chặn liên kết chéo hồ sơ. Đây là dữ liệu của từng user, chưa phải catalog toàn trường dùng chung.
 
 V3–V5 bổ sung persistence cho học vụ, grading policy, snapshot metadata và schedule change; Hibernate chỉ validate schema. Môn học, lớp mở theo học kỳ, buổi học và kỳ thi là các entity riêng. Buổi học giữ occurrence key không phụ thuộc giờ/phòng, có optimistic locking khi cập nhật. [ERD và các quyết định database](database-model.md) mô tả quan hệ, nullability và giới hạn.

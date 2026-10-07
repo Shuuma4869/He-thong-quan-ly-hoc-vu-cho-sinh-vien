@@ -27,6 +27,9 @@ erDiagram
     student_profile ||--o{ grading_policy : has
     curriculum ||--o{ curriculum_group : defines
     curriculum ||--o{ curriculum_course : contains
+    student_profile ||--o{ study_plan_course : plans
+    curriculum ||--o{ study_plan_course : plan_scope
+    curriculum_course ||--o| study_plan_course : planned_assignment
     curriculum_group o|--o{ curriculum_course : groups_courses
     curriculum ||--o| phenikaa_curriculum_mapping : source_identity
     course ||--o| phenikaa_course_mapping : source_identity
@@ -54,6 +57,8 @@ erDiagram
 `student_profile.curriculum_id` là **chương trình người dùng chọn để theo dõi trong AMS**, không phải chương trình hiện hành do Phenikaa xác nhận. Cột có thể null, kể cả khi hồ sơ chỉ có một curriculum. Khóa ngoại ghép `(id, curriculum_id) → curriculum(profile_id, id)` ngăn trỏ sang chương trình của hồ sơ khác. `grading_policy_id` cũng nullable và chỉ trỏ tới bản ghi cùng hồ sơ. Mỗi change có đúng một target: session hoặc exam; ERD không biểu diễn được ràng buộc XOR này nên migration có CHECK riêng.
 
 Phase 16A dùng lại cột và khóa ngoại có từ V3, không thêm migration. GET lựa chọn trả null nếu chưa có hồ sơ; PUT chọn curriculum thuộc đúng hồ sơ; DELETE đặt `curriculum_id` về null mà không xóa curriculum. Import/refresh cùng curriculum giữ UUID nên lựa chọn vẫn trỏ tới bản ghi đó; import một curriculum khác không tự đổi lựa chọn. Đây mới là mốc cho phần tiến độ/kế hoạch sau này, chưa có dữ liệu để tính tín chỉ đã đạt, còn thiếu hoặc GPA.
+
+V12 thêm `study_plan_course` cho kế hoạch học kỳ cá nhân. Mỗi hàng giữ UUID nội bộ, `profile_id`, `curriculum_id`, `course_id`, số `planned_term` từ 1 đến 99 và thời điểm tạo/cập nhật. Unique `(profile_id, curriculum_id, course_id)` ngăn xếp trùng một môn; FK ghép cùng ba cột sang `curriculum_course` ngăn nối sai hồ sơ hoặc môn ngoài chương trình. Index `(profile_id, curriculum_id, planned_term)` phục vụ đọc từng kế hoạch. Không có cascade xóa. Bảng không giữ tên/tín chỉ, không tham chiếu `Semester`, `StudentCourse` hay `AcademicResult`. Đổi/bỏ lựa chọn trong hồ sơ chỉ đổi kế hoạch đang xem, không xóa các hàng cũ. [Hành vi API và UI](study-planner.md) ghi rõ phần người dùng có thể thao tác.
 
 ## Môn học, lớp mở và lần học
 
@@ -125,6 +130,8 @@ Unique index phục vụ cả chống trùng và tra cứu theo owner/identity. 
 - V8: lượt đồng bộ, hàng đợi và index chống hai lượt active cùng user.
 - V9: chỉ mục phục vụ lịch sử có cursor, dọn run kết thúc và chọn kết nối đủ điều kiện tự đồng bộ; không thêm bảng.
 - V10: một kết nối Google Calendar cho mỗi user, token mã hóa và ID lịch phụ; không có bảng sự kiện.
+- V11: xác minh email và outbox cảnh báo đồng bộ.
+- V12: assignment môn vào kỳ kế hoạch cá nhân; không tạo học kỳ hoặc kết quả học tập.
 
 ## Kết nối Google Calendar Phase 7A
 
