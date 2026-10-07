@@ -65,7 +65,10 @@ for (const width of [1280, 375, 320]) {
     await page.goto("/curriculum");
     await page.getByLabel("Chọn chương trình để xem").selectOption({ label: "1. CURR-A — Chương trình kiểm thử A" });
     await page.getByRole("button", { name: "Đặt làm chương trình theo dõi" }).click();
-    await page.goto("/planner");
+    const plannerLink = page.getByRole("link", { name: "Mở kế hoạch học kỳ" });
+    await expect(plannerLink).toBeVisible();
+    await plannerLink.click();
+    await expect(page).toHaveURL(/\/planner$/);
     await expect(page.getByRole("combobox", { name: "Chọn phương án kế hoạch" })).toHaveValue("1");
     await page.getByRole("button", { name: "Xếp TEST101 vào kế hoạch" }).click();
     await page.getByRole("button", { name: "Xếp TEST102 vào kế hoạch" }).click();
@@ -109,7 +112,10 @@ for (const width of [1280, 375, 320]) {
     await page.goto("/curriculum");
     await page.getByLabel("Chọn chương trình để xem").selectOption({ label: "1. CURR-A — Chương trình kiểm thử A" });
     await page.getByRole("button", { name: "Đặt làm chương trình theo dõi" }).click();
-    await page.goto("/planner");
+    const plannerLink = page.getByRole("link", { name: "Mở kế hoạch học kỳ" });
+    await expect(plannerLink).toBeVisible();
+    await plannerLink.click();
+    await expect(page).toHaveURL(/\/planner$/);
     await expect(page.getByText("Bạn chưa xếp môn nào vào kế hoạch.")).toBeVisible();
     expect(comparisonCalls).toBe(0);
     await page.getByRole("button", { name: "Xếp TEST101 vào kế hoạch" }).click();
