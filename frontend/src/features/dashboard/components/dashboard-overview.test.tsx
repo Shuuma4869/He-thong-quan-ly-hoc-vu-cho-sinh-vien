@@ -60,6 +60,7 @@ describe("Dashboard sync status", () => {
     show();
     expect(await screen.findByText("CURR-B — Chương trình kiểm thử B")).toBeInTheDocument();
     expect(screen.getByText("Tín chỉ tối thiểu theo chương trình: 132")).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "Mở kế hoạch" })).toHaveAttribute("href", "/planner");
     for (const word of ["GPA", "Tín chỉ đã đạt", "Tín chỉ còn thiếu", "% hoàn thành"])
       expect(document.body.textContent).not.toContain(word);
   });

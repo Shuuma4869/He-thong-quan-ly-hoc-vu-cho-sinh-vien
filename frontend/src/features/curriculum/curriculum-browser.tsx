@@ -77,6 +77,7 @@ function Curricula({ userId }: { userId: string }) {
           <p className="break-words font-medium">{selected.code} — {selected.name}</p>
           <p className="text-sm text-muted">{selected.revision ? `Phiên bản ${selected.revision} · ` : ""}{selected.cohort ? `Khóa ${selected.cohort} · ` : ""}Tín chỉ tối thiểu theo chương trình: {selected.minimumCredits}</p>
           <p className="text-sm font-medium text-primary">Đang theo dõi trong AMS</p>
+          <Link className="inline-block text-sm font-medium text-primary underline" href="/planner">Mở kế hoạch học kỳ</Link>
           <Button variant="outline" disabled={saving} onClick={() => { change.reset(); clear.mutate(); }}>Bỏ chương trình theo dõi</Button>
         </> : <p>Bạn chưa chọn chương trình để theo dõi.</p>}
       <p className="text-sm text-muted">Lựa chọn này do bạn đặt trong AMS và chưa được xác nhận là chương trình hiện hành từ nguồn.</p>
@@ -177,7 +178,7 @@ function CourseList({ userId, curriculumId }: { userId: string; curriculumId?: s
         <ul className="divide-y">{courses.map((c) => <li key={c.id} className="grid min-w-0 gap-3 py-4 sm:grid-cols-[1fr_auto]">
           <div className="min-w-0 space-y-2"><p className="break-all text-xs font-medium text-primary">{c.code}</p><h3 className="break-words font-medium">{c.name}</h3>
             {"requirement" in c ? <div className="flex flex-wrap items-center gap-2 text-sm"><Requirement value={c.requirement} /><span className="break-words text-muted">{c.groupName ?? "Chưa có nhóm được lưu"}</span>
-              <span className="text-muted">Kỳ kế hoạch: {c.recommendedTerm ?? "Chưa xác định"}</span></div>
+              <span className="text-muted">Kỳ gợi ý trong dữ liệu chương trình: {c.recommendedTerm ?? "Chưa xác định"}</span></div>
               : <p className="text-sm text-muted">{c.curriculumLinked ? "Có liên kết chương trình đã lưu" : "Chưa có liên kết đã lưu"}</p>}
           </div><p className="text-sm tabular-nums"><span className="font-semibold">{c.credits}</span> tín chỉ</p>
         </li>)}</ul>

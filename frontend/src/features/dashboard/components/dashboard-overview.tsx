@@ -50,6 +50,7 @@ export function DashboardOverview({ userId }: { userId: string }) {
             <p className="text-sm text-muted">Tín chỉ tối thiểu theo chương trình: {selection.data.curriculum.minimumCredits}</p></>
           : <p>Chưa chọn chương trình theo dõi.</p>}
         <Link href="/curriculum" className="inline-block text-sm font-medium text-primary underline">Mở Chương trình</Link>
+        {selection.isSuccess && selection.data.curriculum && <Link href="/planner" className="ml-4 inline-block text-sm font-medium text-primary underline">Mở kế hoạch</Link>}
       </article>
       <article className={card}><h2 className="font-semibold">Google Calendar</h2>
         {google.isPending ? <p>Đang kiểm tra…</p> : google.isError ? <><p role="alert">{readError(google.error, "Chưa thể kiểm tra Google Calendar.")}</p><Retry retry={() => void google.refetch()} /></>
