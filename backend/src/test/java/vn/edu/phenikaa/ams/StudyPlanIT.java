@@ -80,6 +80,14 @@ class StudyPlanIT {
                 .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
         return json.readTree(body);
     }
+    private JsonNode compare(AppUser account, int left, int right) throws Exception {
+        var body = mvc.perform(get(PATH + "/compare?left=" + left + "&right=" + right)
+                        .with(user(new AccountPrincipal(account))))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(body).doesNotContain("profileId", "userId", "sourceId", "sourceCourseId",
+                "sourceCurriculumId", "phenikaa", "assignmentId");
+        return json.readTree(body);
+    }
     private void select(UUID profile, UUID curriculum) {
         jdbc.update("update student_profile set curriculum_id = ? where id = ?", curriculum, profile);
     }
@@ -547,6 +555,125 @@ class StudyPlanIT {
             assertThat(target.toString().contains(sourceCourse.toString())).isEqualTo(copyResponse.getStatus() == 204);
             assertThat(read(owner).toString()).contains(sourceCourse.toString()).doesNotContain(addedCourse.toString());
         }
+        verifyNoInteractions(portal);
+    }
+
+    @Test void comparisonWithoutSelectionAndWithEmptyScenariosIsSafe() throws Exception {
+        var owner = account();
+        var withoutProfile = compare(owner, 1, 2);
+        assertThat(withoutProfile.at("/mode").asText()).isEqualTo("USER_PLANNED_AMS");
+        assertThat(withoutProfile.at("/curriculum").isNull()).isTrue();
+        assertThat(withoutProfile.at("/leftScenario").asInt()).isEqualTo(1);
+        assertThat(withoutProfile.at("/rightScenario").asInt()).isEqualTo(2);
+        assertThat(withoutProfile.at("/left/courseCount").asInt()).isZero();
+        assertThat(withoutProfile.at("/right/plannedCredits").decimalValue()).isEqualByComparingTo("0");
+        assertThat(withoutProfile.at("/terms").isEmpty()).isTrue();
+        assertThat(withoutProfile.at("/courses").isEmpty()).isTrue();
+        UUID profile = profile(owner), curriculum = curriculum(profile, "CURR-A");
+        assertThat(compare(owner, 1, 2).at("/curriculum").isNull()).isTrue();
+        select(profile, curriculum);
+        var selected = compare(owner, 1, 2);
+        assertThat(selected.at("/curriculum/id").asText()).isEqualTo(curriculum.toString());
+        assertThat(selected.at("/terms").isEmpty()).isTrue();
+        assertThat(selected.at("/courses").isEmpty()).isTrue();
+        verifyNoInteractions(portal);
+    }
+
+    @Test void comparisonClassifiesAssignmentsAndDoesNotMutateAnyAcademicTables() throws Exception {
+        var owner = account(); UUID profile = profile(owner), curriculum = curriculum(profile, "CURR-A");
+        UUID unchanged = course(profile, curriculum, "TEST101", "Môn A", "3.25");
+        UUID moved = course(profile, curriculum, "TEST102", "Môn B", "4.00");
+        UUID onlyLeft = course(profile, curriculum, "TEST103", "Môn C", "2.00");
+        UUID onlyRight = course(profile, curriculum, "TEST104", "Môn D", "1.50");
+        UUID group = UUID.randomUUID();
+        jdbc.update("insert into curriculum_group(id,profile_id,curriculum_id,code,name,minimum_credits,requirement) values (?,?,?,'E','Nhóm kiểm thử',0,'ELECTIVE')",
+                group, profile, curriculum);
+        jdbc.update("update curriculum_course set requirement = 'ELECTIVE', group_id = ? where course_id = ?",
+                group, onlyRight);
+        select(profile, curriculum);
+        assign(owner, curriculum, unchanged, "1", 1);
+        assign(owner, curriculum, moved, "2", 1);
+        assign(owner, curriculum, onlyLeft, "2", 1);
+        assign(owner, curriculum, unchanged, "1", 2);
+        assign(owner, curriculum, moved, "3", 2);
+        assign(owner, curriculum, onlyRight, "3", 2);
+        String[] tables = {"study_plan_course", "student_course", "academic_result", "semester",
+                "class_section", "class_session", "exam", "academic_snapshot", "schedule_change",
+                "notification_outbox"};
+        long[] before = new long[tables.length];
+        for (int i = 0; i < tables.length; i++)
+            before[i] = jdbc.queryForObject("select count(*) from " + tables[i], Long.class);
+        var timestamps = jdbc.queryForList("select id, created_at, updated_at from study_plan_course where profile_id = ? order by id", profile);
+        var result = compare(owner, 1, 2);
+        assertThat(result.at("/left/plannedCredits").decimalValue()).isEqualByComparingTo("9.25");
+        assertThat(result.at("/right/plannedCredits").decimalValue()).isEqualByComparingTo("8.75");
+        assertThat(result.at("/left/courseCount").asInt()).isEqualTo(3);
+        assertThat(result.at("/right/courseCount").asInt()).isEqualTo(3);
+        assertThat(result.at("/left/termCount").asInt()).isEqualTo(2);
+        assertThat(result.at("/right/termCount").asInt()).isEqualTo(2);
+        assertThat(result.at("/terms/0/plannedTerm").asInt()).isEqualTo(1);
+        assertThat(result.at("/terms/1/plannedTerm").asInt()).isEqualTo(2);
+        assertThat(result.at("/terms/1/leftCourseCount").asInt()).isEqualTo(2);
+        assertThat(result.at("/terms/1/rightCourseCount").asInt()).isZero();
+        assertThat(result.at("/terms/1/rightPlannedCredits").decimalValue()).isEqualByComparingTo("0");
+        assertThat(result.at("/terms/2/plannedTerm").asInt()).isEqualTo(3);
+        assertThat(result.at("/courses/0/change").asText()).isEqualTo("UNCHANGED");
+        assertThat(result.at("/courses/1/change").asText()).isEqualTo("MOVED");
+        assertThat(result.at("/courses/1/leftPlannedTerm").asInt()).isEqualTo(2);
+        assertThat(result.at("/courses/1/rightPlannedTerm").asInt()).isEqualTo(3);
+        assertThat(result.at("/courses/2/change").asText()).isEqualTo("ONLY_LEFT");
+        assertThat(result.at("/courses/2/rightPlannedTerm").isNull()).isTrue();
+        assertThat(result.at("/courses/3/change").asText()).isEqualTo("ONLY_RIGHT");
+        assertThat(result.at("/courses/3/requirement").asText()).isEqualTo("ELECTIVE");
+        assertThat(result.at("/courses/3/groupName").asText()).isEqualTo("Nhóm kiểm thử");
+        assertThat(result.at("/courses/3/credits").decimalValue()).isEqualByComparingTo("1.50");
+        assertThat(jdbc.queryForList("select id, created_at, updated_at from study_plan_course where profile_id = ? order by id", profile))
+                .isEqualTo(timestamps);
+        for (int i = 0; i < tables.length; i++)
+            assertThat(jdbc.queryForObject("select count(*) from " + tables[i], Long.class)).isEqualTo(before[i]);
+        verifyNoInteractions(portal);
+    }
+
+    @Test void comparisonHandlesOneEmptySideIdenticalPlansAndSeparateCurricula() throws Exception {
+        var owner = account(); UUID profile = profile(owner);
+        UUID first = curriculum(profile, "CURR-A"), second = curriculum(profile, "CURR-B");
+        UUID firstCourse = course(profile, first, "TEST101", "Môn A", "3");
+        UUID secondCourse = course(profile, second, "TEST201", "Môn B", "4");
+        select(profile, first); assign(owner, first, firstCourse, "2", 2);
+        var oneSide = compare(owner, 1, 2);
+        assertThat(oneSide.at("/courses/0/change").asText()).isEqualTo("ONLY_RIGHT");
+        assertThat(oneSide.at("/terms/0/leftCourseCount").asInt()).isZero();
+        assign(owner, first, firstCourse, "2", 1);
+        assertThat(compare(owner, 1, 2).at("/courses/0/change").asText()).isEqualTo("UNCHANGED");
+        select(profile, second); assign(owner, second, secondCourse, "3", 1);
+        var switched = compare(owner, 1, 2);
+        assertThat(switched.at("/curriculum/id").asText()).isEqualTo(second.toString());
+        assertThat(switched.at("/courses/0/courseId").asText()).isEqualTo(secondCourse.toString());
+        assertThat(switched.toString()).doesNotContain(firstCourse.toString());
+        verifyNoInteractions(portal);
+    }
+
+    @Test void comparisonRejectsInvalidPairsAndNeverReadsAnotherUsersPlan() throws Exception {
+        var owner = account(); var other = account();
+        UUID profile = profile(owner), foreignProfile = profile(other);
+        UUID curriculum = curriculum(profile, "CURR-A"), foreign = curriculum(foreignProfile, "CURR-B");
+        UUID course = course(profile, curriculum, "TEST101", "Môn A", "3");
+        UUID foreignCourse = course(foreignProfile, foreign, "TEST201", "Môn B", "4");
+        select(profile, curriculum); select(foreignProfile, foreign);
+        assign(owner, curriculum, course, "1", 1);
+        assign(other, foreign, foreignCourse, "2", 1);
+        for (String query : new String[] {"left=0&right=2", "left=6&right=2", "left=1&right=0",
+                "left=1&right=6", "left=1.5&right=2", "left=1&right=abc",
+                "left=&right=2", "left=1&right=", "left=2&right=2", "right=2", "left=1"}) {
+            mvc.perform(get(PATH + "/compare?" + query).with(user(new AccountPrincipal(owner))))
+                    .andExpect(status().isBadRequest())
+                    .andExpect(jsonPath("$.code").value("INVALID_STUDY_PLAN_COMPARISON"));
+        }
+        mvc.perform(get(PATH + "/compare?left=1&right=2")).andExpect(status().isUnauthorized());
+        var result = compare(owner, 1, 2);
+        assertThat(result.at("/curriculum/id").asText()).isEqualTo(curriculum.toString());
+        assertThat(result.toString()).contains(course.toString())
+                .doesNotContain(foreign.toString(), foreignCourse.toString(), foreignProfile.toString());
         verifyNoInteractions(portal);
     }
 }

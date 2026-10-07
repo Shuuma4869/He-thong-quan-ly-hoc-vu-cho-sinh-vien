@@ -24,7 +24,8 @@ public class ApiExceptionHandler {
             case CURRICULUM_SELECTION_REQUIRED, STUDY_PLAN_SELECTION_CHANGED, STUDY_PLAN_SCENARIO_NOT_EMPTY,
                     STUDY_PLAN_TOO_LARGE -> HttpStatus.CONFLICT;
             case STUDY_PLAN_COURSE_NOT_FOUND -> HttpStatus.NOT_FOUND;
-            case INVALID_PLANNED_TERM, INVALID_STUDY_PLAN_SCENARIO -> HttpStatus.BAD_REQUEST;
+            case INVALID_PLANNED_TERM, INVALID_STUDY_PLAN_SCENARIO, INVALID_STUDY_PLAN_COMPARISON ->
+                    HttpStatus.BAD_REQUEST;
         };
         var detail = switch (exception.code()) {
             case CURRICULUM_SELECTION_REQUIRED -> "Bạn cần chọn chương trình theo dõi trước khi lập kế hoạch.";
@@ -32,6 +33,8 @@ public class ApiExceptionHandler {
             case STUDY_PLAN_COURSE_NOT_FOUND -> "Không tìm thấy môn trong chương trình đang theo dõi.";
             case INVALID_PLANNED_TERM -> "Kỳ kế hoạch phải là số nguyên từ 1 đến 99.";
             case INVALID_STUDY_PLAN_SCENARIO -> "Phương án kế hoạch phải là số nguyên từ 1 đến 5.";
+            case INVALID_STUDY_PLAN_COMPARISON ->
+                    "Hai phương án so sánh phải khác nhau và nằm trong khoảng từ 1 đến 5.";
             case STUDY_PLAN_SCENARIO_NOT_EMPTY -> "Phương án đích đã có môn. Hãy chọn phương án trống.";
             case STUDY_PLAN_TOO_LARGE -> "Kế hoạch có quá nhiều môn để xử lý an toàn.";
         };

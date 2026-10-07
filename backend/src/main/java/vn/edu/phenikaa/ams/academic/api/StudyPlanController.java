@@ -30,6 +30,13 @@ public class StudyPlanController {
         return plans.scenarios(principal.getUserId());
     }
 
+    @GetMapping("/compare")
+    public StudyPlanService.ComparisonView compare(@AuthenticationPrincipal AccountPrincipal principal,
+                                                    @RequestParam(required = false) String left,
+                                                    @RequestParam(required = false) String right) {
+        return plans.compare(principal.getUserId(), comparisonScenario(left), comparisonScenario(right));
+    }
+
     @PutMapping("/curricula/{curriculumId}/courses/{courseId}")
     @ResponseStatus(HttpStatus.NO_CONTENT)
     public void put(@AuthenticationPrincipal AccountPrincipal principal, @PathVariable UUID curriculumId,
@@ -73,6 +80,12 @@ public class StudyPlanController {
         if (value == null) return 1;
         if (!value.matches("[1-5]"))
             throw new StudyPlanException(StudyPlanException.Code.INVALID_STUDY_PLAN_SCENARIO);
+        return Integer.parseInt(value);
+    }
+
+    private static int comparisonScenario(String value) {
+        if (value == null || !value.matches("[1-5]"))
+            throw new StudyPlanException(StudyPlanException.Code.INVALID_STUDY_PLAN_COMPARISON);
         return Integer.parseInt(value);
     }
 }

@@ -6,8 +6,9 @@ import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tansta
 import { Button } from "@/components/ui/button";
 import { ApiError } from "@/features/auth/api";
 import { getCurriculumCourses, type CurriculumCourse } from "@/features/curriculum/api";
-import { clearStudyPlanScenario, copyStudyPlanScenario, getStudyPlan, getStudyPlanScenarios,
-  planCourse, removePlannedCourse, studyPlanKeys, type PlannedCourse } from "./api";
+import { clearStudyPlanScenario, copyStudyPlanScenario, getStudyPlan, getStudyPlanComparison,
+  getStudyPlanScenarios, planCourse, removePlannedCourse, studyPlanKeys,
+  type PlannedCourse, type StudyPlanComparison } from "./api";
 
 const panel = "min-w-0 rounded-2xl border bg-card p-5 sm:p-6";
 const field = "w-full min-w-0 rounded-xl border bg-background px-3 py-2 text-sm text-foreground";
@@ -18,14 +19,73 @@ function termValue(value: string): number | null {
   return Number.isInteger(term) && term <= 99 ? term : null;
 }
 
-function errorMessage(error: Error | null): string {
+function errorMessage(error: Error | null, kind: "term" | "scenario" = "term"): string {
   if (error instanceof ApiError) {
     if (error.status === 401 || error.status === 403) return "Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.";
     if (error.status === 404) return "Môn không còn trong chương trình đang theo dõi. Hãy tải lại kế hoạch.";
     if (error.status === 409) return "Kế hoạch hoặc chương trình theo dõi đã thay đổi. Hãy tải lại.";
-    if (error.status === 400) return "Kỳ kế hoạch phải là số nguyên từ 1 đến 99.";
+    if (error.status === 400) return kind === "term"
+      ? "Kỳ kế hoạch phải là số nguyên từ 1 đến 99." : "Phương án kế hoạch không hợp lệ.";
   }
   return "Chưa thể cập nhật kế hoạch. Vui lòng thử lại.";
+}
+
+function comparisonErrorMessage(error: Error | null): string {
+  if (error instanceof ApiError && error.status === 400) return "Hai phương án so sánh không hợp lệ.";
+  if (error instanceof ApiError && (error.status === 401 || error.status === 403))
+    return "Phiên đăng nhập không còn hợp lệ. Vui lòng đăng nhập lại.";
+  return "Chưa thể so sánh hai phương án. Vui lòng thử lại.";
+}
+
+function ComparisonResults({ data, showUnchanged, onToggle }: {
+  data: StudyPlanComparison; showUnchanged: boolean; onToggle: (value: boolean) => void;
+}) {
+  const differences = data.courses.filter((course) => course.change !== "UNCHANGED");
+  const visible = showUnchanged ? data.courses : differences;
+  return <div className="space-y-5">
+    <div className="grid gap-3 sm:grid-cols-2">
+      {([data.left, data.right] as const).map((side) => <article key={side.scenarioNo} className={panel}>
+        <h3 className="font-semibold">Phương án {side.scenarioNo}</h3>
+        <p className="text-sm">{side.courseCount} môn · {side.termCount} kỳ kế hoạch</p>
+        <p className="text-sm">{side.plannedCredits} tín chỉ dự kiến đã xếp</p>
+      </article>)}
+    </div>
+    <section className="space-y-3" aria-labelledby="comparison-terms-title">
+      <h3 id="comparison-terms-title" className="font-semibold">So sánh theo kỳ kế hoạch</h3>
+      {!data.terms.length && <p className="text-sm text-muted">Chưa có kỳ kế hoạch nào được xếp.</p>}
+      <div className="grid gap-3 lg:grid-cols-2">{data.terms.map((term) => <article key={term.plannedTerm} className={panel}>
+        <h4 className="font-medium">Kỳ kế hoạch {term.plannedTerm}</h4>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div><p className="font-medium">Phương án {data.leftScenario}</p>
+            <p className="text-sm">{term.leftCourseCount} môn · {term.leftPlannedCredits} tín chỉ dự kiến</p></div>
+          <div><p className="font-medium">Phương án {data.rightScenario}</p>
+            <p className="text-sm">{term.rightCourseCount} môn · {term.rightPlannedCredits} tín chỉ dự kiến</p></div>
+        </div>
+      </article>)}</div>
+    </section>
+    <section className="space-y-3" aria-labelledby="comparison-courses-title">
+      <h3 id="comparison-courses-title" className="font-semibold">Khác biệt cách xếp môn</h3>
+      {!data.courses.length ? <p>Cả hai phương án hiện chưa có môn để so sánh.</p>
+        : !differences.length && <p>Không có khác biệt về cách xếp môn giữa hai phương án.</p>}
+      {data.courses.some((course) => course.change === "UNCHANGED") &&
+        <label className="flex items-center gap-2 text-sm">
+          <input type="checkbox" checked={showUnchanged} onChange={(event) => onToggle(event.target.checked)} />
+          Hiện môn không thay đổi
+        </label>}
+      <ul className="space-y-3">{visible.map((course) => <li key={course.courseId} className={panel}>
+        <p className="break-all font-medium">{course.code}</p>
+        <p className="break-words">{course.name}</p>
+        <p className="text-sm text-muted">{course.credits} tín chỉ dự kiến</p>
+        {course.change === "MOVED" && <p className="text-sm">Phương án {data.leftScenario}: Kỳ kế hoạch {course.leftPlannedTerm}
+          {" · "}Phương án {data.rightScenario}: Kỳ kế hoạch {course.rightPlannedTerm}</p>}
+        {course.change === "ONLY_LEFT" && <p className="text-sm">Chỉ được xếp trong Phương án {data.leftScenario}
+          {" · "}Kỳ kế hoạch {course.leftPlannedTerm}</p>}
+        {course.change === "ONLY_RIGHT" && <p className="text-sm">Chỉ được xếp trong Phương án {data.rightScenario}
+          {" · "}Kỳ kế hoạch {course.rightPlannedTerm}</p>}
+        {course.change === "UNCHANGED" && <p className="text-sm">Cùng ở Kỳ kế hoạch {course.leftPlannedTerm}.</p>}
+      </li>)}</ul>
+    </section>
+  </div>;
 }
 
 function CourseChoice({ course, currentTerm, busy, onPlan }: {
@@ -109,6 +169,15 @@ export function StudyPlanner({ userId }: { userId: string }) {
   const [scenarioNo, setScenarioNo] = useState(1);
   const [copyTarget, setCopyTarget] = useState(2);
   const [confirmClear, setConfirmClear] = useState(false);
+  const [rightScenario, setRightScenario] = useState(2);
+  const [requestedComparison, setRequestedComparison] = useState<{
+    curriculumId: string; left: number; right: number;
+  } | null>(null);
+  const [showUnchanged, setShowUnchanged] = useState(false);
+  const resetComparison = () => {
+    setRequestedComparison(null); setShowUnchanged(false);
+    void client.invalidateQueries({ queryKey: studyPlanKeys.comparisons(userId), refetchType: "none" });
+  };
   const queryKey = studyPlanKeys.current(userId, scenarioNo);
   const summaryKey = studyPlanKeys.scenarios(userId);
   const summaries = useQuery({ queryKey: summaryKey, queryFn: ({ signal }) => getStudyPlanScenarios(signal),
@@ -121,16 +190,19 @@ export function StudyPlanner({ userId }: { userId: string }) {
   };
   const assign = useMutation({ mutationFn: ({ curriculumId, courseId, term, scenario }: {
     curriculumId: string; courseId: string; term: number; scenario: number;
-  }) => planCourse(curriculumId, courseId, term, scenario), onSettled: (_result, _error, variables) => refresh(variables.scenario) });
+  }) => planCourse(curriculumId, courseId, term, scenario),
+  onSuccess: resetComparison, onSettled: (_result, _error, variables) => refresh(variables.scenario) });
   const remove = useMutation({ mutationFn: ({ curriculumId, courseId, scenario }: {
     curriculumId: string; courseId: string; scenario: number;
-  }) => removePlannedCourse(curriculumId, courseId, scenario), onSettled: (_result, _error, variables) => refresh(variables.scenario) });
+  }) => removePlannedCourse(curriculumId, courseId, scenario),
+  onSuccess: resetComparison, onSettled: (_result, _error, variables) => refresh(variables.scenario) });
   const copy = useMutation({ mutationFn: ({ source, target }: { source: number; target: number }) =>
     copyStudyPlanScenario(source, target),
-    onSuccess: (_result, variables) => { setScenarioNo(variables.target); setConfirmClear(false); },
+    onSuccess: (_result, variables) => { resetComparison(); setScenarioNo(variables.target); setConfirmClear(false); },
     onSettled: (_result, _error, variables) => refresh(variables.target) });
   const clear = useMutation({ mutationFn: (scenario: number) => clearStudyPlanScenario(scenario),
-    onSuccess: () => setConfirmClear(false), onSettled: (_result, _error, scenario) => refresh(scenario) });
+    onSuccess: () => { resetComparison(); setConfirmClear(false); },
+    onSettled: (_result, _error, scenario) => refresh(scenario) });
   const busy = assign.isPending || remove.isPending || copy.isPending || clear.isPending;
   const current = !plan.isFetching && !summaries.isFetching && plan.isSuccess && summaries.isSuccess
     && plan.data.curriculum?.id === summaries.data.curriculum?.id && plan.data.scenarioNo === scenarioNo
@@ -140,8 +212,30 @@ export function StudyPlanner({ userId }: { userId: string }) {
   const choices = summaries.data?.scenarios.filter((item) => item.scenarioNo !== scenarioNo && item.courseCount === 0)
     .map((item) => item.scenarioNo) ?? [];
   const target = choices.includes(copyTarget) ? copyTarget : choices[0];
+  const compareRight = rightScenario === scenarioNo ? (scenarioNo === 1 ? 2 : 1) : rightScenario;
+  const pairMatches = requestedComparison !== null && curriculum?.id === requestedComparison.curriculumId
+    && scenarioNo === requestedComparison.left && compareRight === requestedComparison.right;
+  const comparisonKey = requestedComparison
+    ? studyPlanKeys.comparison(userId, requestedComparison.curriculumId,
+      requestedComparison.left, requestedComparison.right)
+    : studyPlanKeys.comparisons(userId);
+  const comparison = useQuery({ queryKey: comparisonKey, enabled: pairMatches,
+    queryFn: ({ signal }) => getStudyPlanComparison(requestedComparison!.left, requestedComparison!.right, signal),
+    staleTime: 0, retry: false, refetchOnWindowFocus: false, refetchOnReconnect: false });
+  const compared = pairMatches && comparison.isSuccess && comparison.data.curriculum?.id === curriculum?.id
+    && comparison.data.leftScenario === requestedComparison.left
+    && comparison.data.rightScenario === requestedComparison.right ? comparison.data : null;
+  useEffect(() => {
+    if (requestedComparison && current && requestedComparison.curriculumId !== current.curriculum?.id) {
+      const timer = setTimeout(() => {
+        setRequestedComparison(null);
+        setShowUnchanged(false);
+      }, 0);
+      return () => clearTimeout(timer);
+    }
+  }, [requestedComparison, current]);
   const switchScenario = (value: number) => {
-    setScenarioNo(value); setConfirmClear(false);
+    resetComparison(); setScenarioNo(value); setConfirmClear(false);
     assign.reset(); remove.reset(); copy.reset(); clear.reset();
   };
   return <div className="space-y-6">
@@ -155,6 +249,7 @@ export function StudyPlanner({ userId }: { userId: string }) {
         <Button variant="outline" onClick={() => { void plan.refetch(); void summaries.refetch(); }}>Tải lại</Button></div>
       : !curriculum ? <section className={`${panel} space-y-3`}><h2 className="font-semibold">Chưa có chương trình theo dõi</h2>
         <p>Bạn cần chọn chương trình theo dõi trước khi lập kế hoạch.</p>
+        <p>Bạn cần chọn chương trình theo dõi trước khi so sánh.</p>
         <Link className="text-primary underline" href="/curriculum">Mở Chương trình</Link></section>
       : <div key={`${curriculum.id}:${scenarioNo}`} className="space-y-6">
         <section className={`${panel} space-y-2`}><h2 className="font-semibold">Chương trình theo dõi trong AMS</h2>
@@ -197,8 +292,36 @@ export function StudyPlanner({ userId }: { userId: string }) {
               </div>}
           </div>}
         </section>
+        <section className={`${panel} space-y-4`} aria-labelledby="comparison-title">
+          <h2 id="comparison-title" className="text-lg font-semibold">So sánh phương án</h2>
+          <p className="text-sm text-muted">Chỉ đối chiếu cách bạn tự xếp môn trong cùng chương trình theo dõi.</p>
+          <div className="flex flex-wrap items-end gap-3">
+            <p className="text-sm">Phương án bên trái: <strong>Phương án {scenarioNo}</strong> (đang xem)</p>
+            <label className="w-52 max-w-full text-sm">Phương án bên phải
+              <select className={field} value={compareRight}
+                onChange={(event) => { resetComparison(); setRightScenario(Number(event.target.value)); }}>
+                {[1, 2, 3, 4, 5].filter((number) => number !== scenarioNo)
+                  .map((number) => <option key={number} value={number}>Phương án {number}</option>)}
+              </select></label>
+            <Button variant="outline" aria-label={`So sánh Phương án ${scenarioNo} với Phương án ${compareRight}`}
+              onClick={() => {
+                if (requestedComparison?.curriculumId === curriculum.id
+                  && requestedComparison.left === scenarioNo && requestedComparison.right === compareRight)
+                  void comparison.refetch();
+                else setRequestedComparison({ curriculumId: curriculum.id, left: scenarioNo, right: compareRight });
+                setShowUnchanged(false);
+              }}>So sánh hai phương án</Button>
+          </div>
+          {pairMatches && (comparison.isPending || comparison.isFetching
+            ? <p role="status">Đang so sánh hai phương án…</p>
+            : comparison.isError ? <p role="alert">{comparisonErrorMessage(comparison.error)}</p>
+            : compared ? <ComparisonResults data={compared} showUnchanged={showUnchanged} onToggle={setShowUnchanged} />
+            : <p role="alert">Chương trình theo dõi đã thay đổi. Hãy so sánh lại.</p>)}
+        </section>
         {(assign.isError || remove.isError || copy.isError || clear.isError) &&
-          <p role="alert" className="text-sm text-destructive">{errorMessage(assign.error ?? remove.error ?? copy.error ?? clear.error)}</p>}
+          <p role="alert" className="text-sm text-destructive">{errorMessage(
+            assign.error ?? remove.error ?? copy.error ?? clear.error,
+            copy.isError || clear.isError ? "scenario" : "term")}</p>}
         <section className="space-y-3" aria-labelledby="planned-terms-title"><h2 id="planned-terms-title" className="text-lg font-semibold">Các kỳ kế hoạch</h2>
           {!current.terms.length && <div className={`${panel} space-y-2`}><p>Bạn chưa xếp môn nào vào kế hoạch.</p>
             <p className="text-sm text-muted">Chọn môn trong chương trình theo dõi và tự xếp vào kỳ dự kiến.</p></div>}

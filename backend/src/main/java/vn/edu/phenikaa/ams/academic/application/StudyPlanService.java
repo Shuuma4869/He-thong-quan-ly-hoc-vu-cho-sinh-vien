@@ -3,8 +3,13 @@ package vn.edu.phenikaa.ams.academic.application;
 import java.math.BigDecimal;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.TreeMap;
+import java.util.TreeSet;
 import java.util.UUID;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Service;
@@ -13,6 +18,7 @@ import org.springframework.transaction.annotation.Transactional;
 import vn.edu.phenikaa.ams.academic.domain.CurriculumCourse.Requirement;
 import vn.edu.phenikaa.ams.academic.domain.StudyPlanCourse;
 import vn.edu.phenikaa.ams.academic.infrastructure.StudyPlanRepository;
+import vn.edu.phenikaa.ams.academic.infrastructure.StudyPlanRepository.PlannedCourse;
 import vn.edu.phenikaa.ams.academic.infrastructure.StudyPlanRepository.ProfileSelection;
 import vn.edu.phenikaa.ams.user.domain.AppUser;
 import vn.edu.phenikaa.ams.user.infrastructure.UserRepository;
@@ -28,6 +34,20 @@ public class StudyPlanService {
     public record PlanView(String mode, int scenarioNo, CurriculumView curriculum, List<TermView> terms) {}
     public record ScenarioView(int scenarioNo, long courseCount, long termCount, BigDecimal plannedCredits) {}
     public record ScenariosView(String mode, CurriculumView curriculum, List<ScenarioView> scenarios) {}
+    public enum CourseChange { UNCHANGED, MOVED, ONLY_LEFT, ONLY_RIGHT }
+    public record TermComparisonView(int plannedTerm, int leftCourseCount, BigDecimal leftPlannedCredits,
+                                     int rightCourseCount, BigDecimal rightPlannedCredits) {}
+    public record CourseComparisonView(UUID courseId, String code, String name, BigDecimal credits,
+                                       Requirement requirement, String groupName, Integer leftPlannedTerm,
+                                       Integer rightPlannedTerm, CourseChange change) {}
+    public record ComparisonView(String mode, CurriculumView curriculum, int leftScenario, int rightScenario,
+                                 ScenarioView left, ScenarioView right, List<TermComparisonView> terms,
+                                 List<CourseComparisonView> courses) {}
+    private record TermTotals(int count, BigDecimal credits) {
+        TermTotals plus(TermTotals other) {
+            return new TermTotals(count + other.count, credits.add(other.credits));
+        }
+    }
 
     private final UserRepository users;
     private final StudyPlanRepository plans;
@@ -74,6 +94,81 @@ public class StudyPlanService {
         }
         return new ScenariosView("USER_PLANNED_AMS",
                 new CurriculumView(selected.curriculumId(), selected.code(), selected.name()), List.copyOf(scenarios));
+    }
+
+    @Transactional(readOnly = true, isolation = Isolation.REPEATABLE_READ)
+    public ComparisonView compare(UUID userId, int leftScenario, int rightScenario) {
+        comparisonScenarios(leftScenario, rightScenario);
+        active(userId);
+        var selected = plans.selected(userId).orElse(null);
+        if (selected == null) return compareRows(null, leftScenario, rightScenario, List.of(), List.of());
+        var left = plans.courses(userId, selected.curriculumId(), leftScenario, MAX_ITEMS + 1);
+        if (left.size() > MAX_ITEMS) throw new StudyPlanException(STUDY_PLAN_TOO_LARGE);
+        var right = plans.courses(userId, selected.curriculumId(), rightScenario, MAX_ITEMS + 1);
+        if (right.size() > MAX_ITEMS) throw new StudyPlanException(STUDY_PLAN_TOO_LARGE);
+        return compareRows(new CurriculumView(selected.curriculumId(), selected.code(), selected.name()),
+                leftScenario, rightScenario, left, right);
+    }
+
+    static ComparisonView compareRows(CurriculumView curriculum, int leftScenario, int rightScenario,
+                                      List<PlannedCourse> leftRows, List<PlannedCourse> rightRows) {
+        comparisonScenarios(leftScenario, rightScenario);
+        if (leftRows.size() > MAX_ITEMS || rightRows.size() > MAX_ITEMS)
+            throw new StudyPlanException(STUDY_PLAN_TOO_LARGE);
+        var leftById = index(leftRows);
+        var rightById = index(rightRows);
+        var leftTerms = totalsByTerm(leftRows);
+        var rightTerms = totalsByTerm(rightRows);
+        var terms = new TreeSet<>(leftTerms.keySet());
+        terms.addAll(rightTerms.keySet());
+        var termViews = terms.stream().map(term -> {
+            var left = leftTerms.getOrDefault(term, new TermTotals(0, BigDecimal.ZERO));
+            var right = rightTerms.getOrDefault(term, new TermTotals(0, BigDecimal.ZERO));
+            return new TermComparisonView(term, left.count(), left.credits(), right.count(), right.credits());
+        }).toList();
+        var courseIds = new HashSet<>(leftById.keySet());
+        courseIds.addAll(rightById.keySet());
+        var courseViews = courseIds.stream().map(courseId -> {
+            var left = leftById.get(courseId);
+            var right = rightById.get(courseId);
+            var details = left == null ? right : left;
+            Integer leftTerm = left == null ? null : left.plannedTerm();
+            Integer rightTerm = right == null ? null : right.plannedTerm();
+            var change = left == null ? CourseChange.ONLY_RIGHT
+                    : right == null ? CourseChange.ONLY_LEFT
+                    : leftTerm.equals(rightTerm) ? CourseChange.UNCHANGED : CourseChange.MOVED;
+            return new CourseComparisonView(courseId, details.code(), details.name(), details.credits(),
+                    details.requirement(), details.groupName(), leftTerm, rightTerm, change);
+        }).sorted(Comparator.comparing(CourseComparisonView::code).thenComparing(CourseComparisonView::courseId))
+                .toList();
+        return new ComparisonView("USER_PLANNED_AMS", curriculum, leftScenario, rightScenario,
+                summary(leftScenario, leftById.size(), leftTerms), summary(rightScenario, rightById.size(), rightTerms),
+                termViews, courseViews);
+    }
+
+    private static Map<UUID, PlannedCourse> index(List<PlannedCourse> rows) {
+        var byId = new HashMap<UUID, PlannedCourse>();
+        for (var row : rows)
+            if (byId.putIfAbsent(row.courseId(), row) != null)
+                throw new IllegalStateException("Duplicate study-plan course");
+        return byId;
+    }
+
+    private static TreeMap<Integer, TermTotals> totalsByTerm(List<PlannedCourse> rows) {
+        var totals = new TreeMap<Integer, TermTotals>();
+        for (var row : rows)
+            totals.merge(row.plannedTerm(), new TermTotals(1, row.credits()), TermTotals::plus);
+        return totals;
+    }
+
+    private static ScenarioView summary(int number, int count, Map<Integer, TermTotals> terms) {
+        var credits = terms.values().stream().map(TermTotals::credits).reduce(BigDecimal.ZERO, BigDecimal::add);
+        return new ScenarioView(number, count, terms.size(), credits);
+    }
+
+    private static void comparisonScenarios(int left, int right) {
+        if (left == right || left < 1 || left > 5 || right < 1 || right > 5)
+            throw new StudyPlanException(INVALID_STUDY_PLAN_COMPARISON);
     }
 
     @Transactional
