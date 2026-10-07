@@ -12,11 +12,31 @@ import org.springframework.web.server.ResponseStatusException;
 import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.http.ResponseEntity;
 import vn.edu.phenikaa.ams.academic.application.AcademicSourceQueryException;
+import vn.edu.phenikaa.ams.academic.application.StudyPlanException;
 import vn.edu.phenikaa.ams.sync.application.SyncCommandException;
 import vn.edu.phenikaa.ams.calendar.google.GoogleCalendarException;
 
 @RestControllerAdvice
 public class ApiExceptionHandler {
+    @ExceptionHandler(StudyPlanException.class)
+    ResponseEntity<ProblemDetail> handleStudyPlan(StudyPlanException exception) {
+        var status = switch (exception.code()) {
+            case CURRICULUM_SELECTION_REQUIRED, STUDY_PLAN_SELECTION_CHANGED, STUDY_PLAN_TOO_LARGE -> HttpStatus.CONFLICT;
+            case STUDY_PLAN_COURSE_NOT_FOUND -> HttpStatus.NOT_FOUND;
+            case INVALID_PLANNED_TERM -> HttpStatus.BAD_REQUEST;
+        };
+        var detail = switch (exception.code()) {
+            case CURRICULUM_SELECTION_REQUIRED -> "Bạn cần chọn chương trình theo dõi trước khi lập kế hoạch.";
+            case STUDY_PLAN_SELECTION_CHANGED -> "Chương trình theo dõi đã thay đổi. Hãy tải lại kế hoạch.";
+            case STUDY_PLAN_COURSE_NOT_FOUND -> "Không tìm thấy môn trong chương trình đang theo dõi.";
+            case INVALID_PLANNED_TERM -> "Kỳ kế hoạch phải là số nguyên từ 1 đến 99.";
+            case STUDY_PLAN_TOO_LARGE -> "Kế hoạch có quá nhiều môn để xử lý an toàn.";
+        };
+        var problem = ProblemDetail.forStatusAndDetail(status, detail);
+        problem.setProperty("code", exception.code().name());
+        return ResponseEntity.status(status).body(problem);
+    }
+
     @ExceptionHandler(NotificationException.class)
     ProblemDetail handleNotification(NotificationException exception) {
         var problem = ProblemDetail.forStatusAndDetail(exception.status(), exception.getMessage());
