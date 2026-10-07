@@ -9,7 +9,16 @@ class StudyPlanCourseTest {
     private final Instant first = Instant.parse("2026-01-01T00:00:00Z");
 
     private StudyPlanCourse course(int term) {
-        return new StudyPlanCourse(UUID.randomUUID(), UUID.randomUUID(), UUID.randomUUID(), term, first);
+        return new StudyPlanCourse(UUID.randomUUID(), UUID.randomUUID(), 1, UUID.randomUUID(), term, first);
+    }
+
+    @Test void scenarioIsFixedAndValidated() {
+        var planned = new StudyPlanCourse(UUID.randomUUID(), UUID.randomUUID(), 5, UUID.randomUUID(), 1, first);
+        planned.moveToTerm(2, first.plusSeconds(1));
+        assertThat(planned.scenarioNo()).isEqualTo(5);
+        for (int invalid : new int[] {0, 6})
+            assertThatThrownBy(() -> new StudyPlanCourse(UUID.randomUUID(), UUID.randomUUID(), invalid,
+                    UUID.randomUUID(), 1, first)).isInstanceOf(IllegalArgumentException.class);
     }
 
     @Test void acceptsBoundaryTermsAndMovesWithoutChangingIdentity() {
