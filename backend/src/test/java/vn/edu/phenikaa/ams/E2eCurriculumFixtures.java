@@ -23,11 +23,24 @@ public class E2eCurriculumFixtures {
     public void create(@AuthenticationPrincipal AccountPrincipal principal) {
         UUID profile = UUID.randomUUID();
         jdbc.update("insert into student_profile(id,user_id) values (?,?)", profile, principal.getUserId());
+        UUID first = null, second = null;
         for (String code : new String[] {"CURR-A", "CURR-B"}) {
+            UUID curriculum = UUID.randomUUID();
             jdbc.update("insert into curriculum(id,profile_id,code,name,minimum_credits) values (?,?,?,?,?)",
-                    UUID.randomUUID(), profile, code, "Chương trình kiểm thử " + code.substring(5), 132);
+                    curriculum, profile, code, "Chương trình kiểm thử " + code.substring(5), 132);
+            if (first == null) first = curriculum; else second = curriculum;
         }
-        jdbc.update("insert into course(id,profile_id,code,name,credits) values (?,?,?,?,?)",
-                UUID.randomUUID(), profile, "TEST101", "Môn kiểm thử", 3);
+        String[] codes = {"TEST101", "TEST102", "TEST103", "TEST201"};
+        String[] names = {"Môn kiểm thử A", "Môn kiểm thử B", "Môn kiểm thử C", "Môn kiểm thử D"};
+        int[] credits = {3, 4, 2, 3};
+        for (int i = 0; i < codes.length; i++) {
+            UUID course = UUID.randomUUID();
+            jdbc.update("insert into course(id,profile_id,code,name,credits) values (?,?,?,?,?)",
+                    course, profile, codes[i], names[i], credits[i]);
+            jdbc.update("""
+                    insert into curriculum_course(id,profile_id,curriculum_id,course_id,requirement,credits)
+                    values (?,?,?,?, 'REQUIRED', ?)
+                    """, UUID.randomUUID(), profile, i == 3 ? second : first, course, credits[i]);
+        }
     }
 }

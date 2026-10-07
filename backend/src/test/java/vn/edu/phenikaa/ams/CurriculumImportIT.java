@@ -115,18 +115,25 @@ class CurriculumImportIT {
         assertThat(count("course")).isEqualTo(3); assertThat(count("curriculum_course")).isEqualTo(2);
         assertThat(jdbc.queryForObject("select curriculum_id from student_profile where id = ?", UUID.class, profile)).isEqualTo(id);
     }
-    @Test void refreshingSelectedCurriculumKeepsItsUuidAndImportingAnotherDoesNotSelectIt() {
+    @Test void refreshingSelectedCurriculumKeepsItsUuidAndPlanWhileAnotherDoesNotSelectIt() {
         UUID selected = imports.importCurriculum(user, option);
         jdbc.update("update student_profile set curriculum_id = ? where id = ?", selected, profile);
+        UUID plannedCourse = jdbc.queryForObject("select course_id from curriculum_course where profile_id = ? and curriculum_id = ? order by course_id limit 1", UUID.class, profile, selected);
+        UUID assignment = UUID.randomUUID();
+        jdbc.update("insert into study_plan_course(id,profile_id,curriculum_id,course_id,planned_term,created_at,updated_at) values (?,?,?,?,2,now(),now())",
+                assignment, profile, selected, plannedCourse);
         var updated = new CurriculumOption(option.sourceId(), option.code(), "Tên chương trình cập nhật", "TEST2", new BigDecimal("7"));
         when(http.fetchCurriculum(any(), any())).thenReturn(observation(updated, "Môn giả định", new BigDecimal("3")));
         assertThat(imports.importCurriculum(user, updated)).isEqualTo(selected);
         assertThat(jdbc.queryForObject("select name from curriculum where id = ?", String.class, selected)).isEqualTo("Tên chương trình cập nhật");
         assertThat(jdbc.queryForObject("select curriculum_id from student_profile where id = ?", UUID.class, profile)).isEqualTo(selected);
+        assertThat(jdbc.queryForObject("select id from study_plan_course where profile_id = ? and curriculum_id = ? and course_id = ? and planned_term = 2", UUID.class,
+                profile, selected, plannedCourse)).isEqualTo(assignment);
         var another = new CurriculumOption("synthetic-other-curriculum", "CURR-B", "Chương trình kiểm thử B", null, new BigDecimal("7"));
         when(http.fetchCurriculum(any(), any())).thenReturn(observation(another, "Môn giả định", new BigDecimal("3")));
         imports.importCurriculum(user, another);
         assertThat(jdbc.queryForObject("select curriculum_id from student_profile where id = ?", UUID.class, profile)).isEqualTo(selected);
+        assertThat(count("study_plan_course")).isEqualTo(1);
     }
     @Test void partialUnknownResponseDoesNotRemoveAbsentMemberships() {
         imports.importCurriculum(user, option);

@@ -1,0 +1,296 @@
+package vn.edu.phenikaa.ams;
+
+import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.context.SpringBootTest;
+import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
+import org.springframework.context.annotation.Import;
+import org.springframework.dao.DataIntegrityViolationException;
+import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
+import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionTemplate;
+import tools.jackson.databind.JsonNode;
+import tools.jackson.databind.json.JsonMapper;
+import vn.edu.phenikaa.ams.academic.application.port.AcademicPortalClient;
+import vn.edu.phenikaa.ams.auth.application.AccountPrincipal;
+import vn.edu.phenikaa.ams.user.domain.AppUser;
+import vn.edu.phenikaa.ams.user.infrastructure.UserRepository;
+import static org.assertj.core.api.Assertions.*;
+import static org.mockito.Mockito.*;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.*;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+@Import(TestcontainersConfiguration.class)
+@SpringBootTest(properties = {"spring.data.redis.password=", "ams.phenikaa.enabled=false"})
+@AutoConfigureMockMvc
+class StudyPlanIT {
+    private static final String PATH = "/api/me/academic/study-plan";
+    @Autowired MockMvc mvc;
+    @Autowired JdbcTemplate jdbc;
+    @Autowired UserRepository users;
+    @Autowired PlatformTransactionManager transactions;
+    @MockitoBean AcademicPortalClient portal;
+    private final JsonMapper json = JsonMapper.builder().build();
+
+    private AppUser account() { return users.save(new AppUser(UUID.randomUUID() + "@example.test", "!synthetic", null)); }
+    private UUID profile(AppUser user) {
+        UUID id = UUID.randomUUID();
+        jdbc.update("insert into student_profile(id,user_id) values (?,?)", id, user.getId());
+        return id;
+    }
+    private UUID curriculum(UUID profile, String code) {
+        UUID id = UUID.randomUUID();
+        jdbc.update("insert into curriculum(id,profile_id,code,name,minimum_credits) values (?,?,?,?,?)",
+                id, profile, code, "Chương trình kiểm thử " + code, 120);
+        return id;
+    }
+    private UUID course(UUID profile, UUID curriculum, String code, String name, String credits) {
+        UUID id = UUID.randomUUID();
+        jdbc.update("insert into course(id,profile_id,code,name,credits) values (?,?,?,?,?::numeric)",
+                id, profile, code, name, credits);
+        jdbc.update("""
+                insert into curriculum_course(id,profile_id,curriculum_id,course_id,requirement,credits)
+                values (?,?,?,?,'REQUIRED',?::numeric)
+                """, UUID.randomUUID(), profile, curriculum, id, credits);
+        return id;
+    }
+    private String path(UUID curriculum, UUID course) { return PATH + "/curricula/" + curriculum + "/courses/" + course; }
+    private JsonNode read(AppUser account) throws Exception {
+        var body = mvc.perform(get(PATH).with(user(new AccountPrincipal(account))))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(body).doesNotContain("profileId", "sourceId", "sourceCurriculumId", "phenikaa");
+        return json.readTree(body);
+    }
+    private void select(UUID profile, UUID curriculum) {
+        jdbc.update("update student_profile set curriculum_id = ? where id = ?", curriculum, profile);
+    }
+    private void assign(AppUser account, UUID curriculum, UUID course, String term) throws Exception {
+        mvc.perform(put(path(curriculum, course)).with(user(new AccountPrincipal(account))).with(csrf())
+                .contentType("application/json").content("{\"plannedTerm\":" + term + "}"))
+                .andExpect(status().isNoContent());
+    }
+
+    @Test void emptyAndSelectedPlansDoNotAutoPopulate() throws Exception {
+        var owner = account();
+        assertThat(read(owner).at("/curriculum").isNull()).isTrue();
+        assertThat(read(owner).at("/terms").isEmpty()).isTrue();
+        mvc.perform(put(path(UUID.randomUUID(), UUID.randomUUID())).with(user(new AccountPrincipal(owner))).with(csrf())
+                .contentType("application/json").content("{\"plannedTerm\":1}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CURRICULUM_SELECTION_REQUIRED"));
+        UUID profile = profile(owner), curriculum = curriculum(profile, "CURR-A");
+        assertThat(read(owner).at("/curriculum").isNull()).isTrue();
+        select(profile, curriculum);
+        assertThat(read(owner).at("/mode").asText()).isEqualTo("USER_PLANNED_AMS");
+        assertThat(read(owner).at("/curriculum/id").asText()).isEqualTo(curriculum.toString());
+        assertThat(read(owner).at("/terms").isEmpty()).isTrue();
+        verifyNoInteractions(portal);
+    }
+
+    @Test void addMoveRemoveAreIdempotentAndCreditsFollowCurrentMembership() throws Exception {
+        var owner = account(); UUID profile = profile(owner), curriculum = curriculum(profile, "CURR-A");
+        UUID b = course(profile, curriculum, "TEST102", "Môn kiểm thử B", "4.00");
+        UUID a = course(profile, curriculum, "TEST101", "Môn kiểm thử A", "3.25");
+        UUID c = course(profile, curriculum, "TEST103", "Môn kiểm thử C", "2.00");
+        select(profile, curriculum);
+        assign(owner, curriculum, b, "1"); assign(owner, curriculum, a, "1"); assign(owner, curriculum, c, "2");
+        var first = read(owner);
+        assertThat(first.at("/terms/0/plannedTerm").asInt()).isEqualTo(1);
+        assertThat(first.at("/terms/0/courseCount").asInt()).isEqualTo(2);
+        assertThat(first.at("/terms/0/plannedCredits").decimalValue()).isEqualByComparingTo("7.25");
+        assertThat(first.at("/terms/0/courses/0/code").asText()).isEqualTo("TEST101");
+        assertThat(first.at("/terms/0/courses/1/code").asText()).isEqualTo("TEST102");
+        assertThat(first.at("/terms/1/plannedCredits").decimalValue()).isEqualByComparingTo("2.00");
+        UUID assignment = jdbc.queryForObject("select id from study_plan_course where course_id = ?", UUID.class, b);
+        assign(owner, curriculum, b, "1"); assign(owner, curriculum, b, "2");
+        assertThat(jdbc.queryForObject("select id from study_plan_course where course_id = ?", UUID.class, b)).isEqualTo(assignment);
+        assertThat(read(owner).at("/terms/1/courseCount").asInt()).isEqualTo(2);
+        jdbc.update("update curriculum_course set credits = 4.50 where course_id = ?", b);
+        jdbc.update("update course set name = 'Tên cập nhật' where id = ?", b);
+        var refreshed = read(owner);
+        assertThat(refreshed.at("/terms/1/plannedCredits").decimalValue()).isEqualByComparingTo("6.50");
+        assertThat(refreshed.at("/terms/1/courses/0/name").asText()).isEqualTo("Tên cập nhật");
+        mvc.perform(delete(path(curriculum, a)).with(user(new AccountPrincipal(owner))).with(csrf())).andExpect(status().isNoContent());
+        mvc.perform(delete(path(curriculum, a)).with(user(new AccountPrincipal(owner))).with(csrf())).andExpect(status().isNoContent());
+        assertThat(jdbc.queryForObject("select count(*) from study_plan_course where profile_id = ?", Integer.class, profile)).isEqualTo(2);
+        verifyNoInteractions(portal);
+    }
+
+    @Test void switchingAndClearingSelectionPreservesSeparatePlans() throws Exception {
+        var owner = account(); UUID profile = profile(owner);
+        UUID a = curriculum(profile, "CURR-A"), b = curriculum(profile, "CURR-B");
+        UUID aCourse = course(profile, a, "TEST101", "Môn A", "3");
+        UUID bCourse = course(profile, b, "TEST201", "Môn B", "4");
+        select(profile, a); assign(owner, a, aCourse, "1");
+        select(profile, b);
+        assertThat(read(owner).at("/terms").isEmpty()).isTrue();
+        assign(owner, b, bCourse, "2");
+        assertThat(read(owner).at("/terms/0/courses/0/courseId").asText()).isEqualTo(bCourse.toString());
+        select(profile, a);
+        assertThat(read(owner).at("/terms/0/courses/0/courseId").asText()).isEqualTo(aCourse.toString());
+        select(profile, null);
+        assertThat(read(owner).at("/curriculum").isNull()).isTrue();
+        assertThat(read(owner).at("/terms").isEmpty()).isTrue();
+        assertThat(jdbc.queryForObject("select count(*) from study_plan_course where profile_id = ?", Integer.class, profile)).isEqualTo(2);
+        select(profile, a);
+        assertThat(read(owner).at("/terms/0/courses/0/courseId").asText()).isEqualTo(aCourse.toString());
+        verifyNoInteractions(portal);
+    }
+
+    @Test void ownershipValidationAndDatabaseForeignKeyRejectCrossProfileCourse() throws Exception {
+        var first = account(); var second = account();
+        UUID firstProfile = profile(first), secondProfile = profile(second);
+        UUID firstCurriculum = curriculum(firstProfile, "CURR-A"), secondCurriculum = curriculum(secondProfile, "CURR-B");
+        UUID firstCourse = course(firstProfile, firstCurriculum, "TEST101", "Môn A", "3");
+        UUID secondCourse = course(secondProfile, secondCurriculum, "TEST201", "Môn B", "4");
+        select(firstProfile, firstCurriculum);
+        mvc.perform(put(path(secondCurriculum, secondCourse)).with(user(new AccountPrincipal(first))).with(csrf())
+                .contentType("application/json").content("{\"plannedTerm\":1}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("STUDY_PLAN_SELECTION_CHANGED"));
+        mvc.perform(put(path(firstCurriculum, secondCourse)).with(user(new AccountPrincipal(first))).with(csrf())
+                .contentType("application/json").content("{\"plannedTerm\":1}"))
+                .andExpect(status().isNotFound()).andExpect(jsonPath("$.code").value("STUDY_PLAN_COURSE_NOT_FOUND"));
+        mvc.perform(delete(path(firstCurriculum, secondCourse)).with(user(new AccountPrincipal(first))).with(csrf()))
+                .andExpect(status().isNotFound());
+        assertThatThrownBy(() -> jdbc.update("""
+                insert into study_plan_course(id,profile_id,curriculum_id,course_id,planned_term,created_at,updated_at)
+                values (?,?,?,?,1,now(),now())
+                """, UUID.randomUUID(), firstProfile, firstCurriculum, secondCourse))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assertThat(read(second).at("/terms").isEmpty()).isTrue();
+        assign(first, firstCurriculum, firstCourse, "1");
+        verifyNoInteractions(portal);
+    }
+
+    @Test void validationAuthenticationCsrfAndNoOutcomeMutation() throws Exception {
+        var owner = account(); UUID profile = profile(owner), curriculum = curriculum(profile, "CURR-A");
+        UUID course = course(profile, curriculum, "TEST101", "Môn A", "3");
+        mvc.perform(get(PATH)).andExpect(status().isUnauthorized());
+        mvc.perform(put(path(curriculum, course)).with(user(new AccountPrincipal(owner)))
+                .contentType("application/json").content("{\"plannedTerm\":1}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(delete(path(curriculum, course)).with(user(new AccountPrincipal(owner))))
+                .andExpect(status().isForbidden());
+        mvc.perform(put(path(curriculum, course)).with(user(new AccountPrincipal(owner))).with(csrf())
+                .contentType("application/json").content("{\"plannedTerm\":1}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CURRICULUM_SELECTION_REQUIRED"));
+        select(profile, curriculum);
+        for (String term : new String[] {"0", "100", "2.5", "null"})
+            mvc.perform(put(path(curriculum, course)).with(user(new AccountPrincipal(owner))).with(csrf())
+                    .contentType("application/json").content("{\"plannedTerm\":" + term + "}"))
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_PLANNED_TERM"));
+        String[] unchanged = {"student_course", "academic_result", "semester", "class_section", "class_session",
+                "exam", "academic_snapshot", "schedule_change", "notification_outbox"};
+        long[] before = new long[unchanged.length];
+        for (int i = 0; i < unchanged.length; i++)
+            before[i] = jdbc.queryForObject("select count(*) from " + unchanged[i], Long.class);
+        assign(owner, curriculum, course, "99");
+        for (int i = 0; i < unchanged.length; i++)
+            assertThat(jdbc.queryForObject("select count(*) from " + unchanged[i], Long.class)).isEqualTo(before[i]);
+        verifyNoInteractions(portal);
+    }
+
+    @Test void concurrentPutsKeepOneAssignment() throws Exception {
+        var owner = account(); UUID profile = profile(owner), curriculum = curriculum(profile, "CURR-A");
+        UUID course = course(profile, curriculum, "TEST101", "Môn A", "3");
+        select(profile, curriculum);
+        try (var workers = Executors.newFixedThreadPool(2)) {
+            var ready = new CountDownLatch(2);
+            var start = new CountDownLatch(1);
+            var tasks = java.util.stream.IntStream.range(0, 2).mapToObj(i -> workers.submit(() -> {
+                ready.countDown();
+                start.await();
+                assign(owner, curriculum, course, i == 0 ? "1" : "2");
+                return null;
+            })).toList();
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            for (var task : tasks) task.get(10, TimeUnit.SECONDS);
+        }
+        assertThat(jdbc.queryForObject("select count(*) from study_plan_course where profile_id = ?", Integer.class, profile)).isEqualTo(1);
+        assertThat(read(owner).at("/terms/0/courseCount").asInt()).isEqualTo(1);
+        verifyNoInteractions(portal);
+    }
+
+    @Test void mutationWaitsForSelectionChangeAndRejectsOldCurriculum() throws Exception {
+        var owner = account(); UUID profile = profile(owner);
+        UUID first = curriculum(profile, "CURR-A"), second = curriculum(profile, "CURR-B");
+        UUID course = course(profile, first, "TEST101", "Môn A", "3");
+        select(profile, first);
+        var held = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        try (var workers = Executors.newFixedThreadPool(2)) {
+            var switcher = workers.submit(() -> new TransactionTemplate(transactions).execute(status -> {
+                jdbc.queryForObject("select id from student_profile where id = ? for update", UUID.class, profile);
+                jdbc.update("update student_profile set curriculum_id = ? where id = ?", second, profile);
+                held.countDown();
+                try { if (!release.await(5, TimeUnit.SECONDS)) throw new IllegalStateException("Selection lock timeout"); }
+                catch (InterruptedException ex) { Thread.currentThread().interrupt(); throw new IllegalStateException(ex); }
+                return null;
+            }));
+            assertThat(held.await(5, TimeUnit.SECONDS)).isTrue();
+            var mutation = workers.submit(() -> mvc.perform(put(path(first, course))
+                    .with(user(new AccountPrincipal(owner))).with(csrf())
+                    .contentType("application/json").content("{\"plannedTerm\":1}"))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("STUDY_PLAN_SELECTION_CHANGED")));
+            try { assertThatThrownBy(() -> mutation.get(200, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class); }
+            finally { release.countDown(); }
+            switcher.get(10, TimeUnit.SECONDS);
+            mutation.get(10, TimeUnit.SECONDS);
+        }
+        assertThat(jdbc.queryForObject("select count(*) from study_plan_course where profile_id = ?", Integer.class, profile)).isZero();
+        verifyNoInteractions(portal);
+    }
+
+    @Test void curriculumRefreshStyleUpdatesKeepPlanWithoutAutoAddingCourses() throws Exception {
+        var owner = account(); UUID profile = profile(owner), curriculum = curriculum(profile, "CURR-A");
+        UUID course = course(profile, curriculum, "TEST101", "Tên ban đầu", "3");
+        select(profile, curriculum);
+        assign(owner, curriculum, course, "3");
+        UUID assignment = jdbc.queryForObject("select id from study_plan_course where course_id = ?", UUID.class, course);
+        jdbc.update("update curriculum set name = 'Tên chương trình cập nhật' where id = ?", curriculum);
+        jdbc.update("update course set name = 'Tên môn cập nhật' where id = ?", course);
+        jdbc.update("update curriculum_course set credits = 3.50 where curriculum_id = ? and course_id = ?", curriculum, course);
+        course(profile, curriculum, "TEST102", "Môn mới", "4");
+        curriculum(profile, "CURR-B");
+        var plan = read(owner);
+        assertThat(plan.at("/curriculum/name").asText()).isEqualTo("Tên chương trình cập nhật");
+        assertThat(plan.at("/terms/0/courses/0/name").asText()).isEqualTo("Tên môn cập nhật");
+        assertThat(plan.at("/terms/0/plannedCredits").decimalValue()).isEqualByComparingTo("3.50");
+        assertThat(plan.at("/terms/0/courseCount").asInt()).isEqualTo(1);
+        assertThat(jdbc.queryForObject("select id from study_plan_course where course_id = ?", UUID.class, course)).isEqualTo(assignment);
+        verifyNoInteractions(portal);
+    }
+
+    @Test void databaseRejectsInvalidTermTimestampAndDuplicateAssignment() throws Exception {
+        var owner = account(); UUID profile = profile(owner), curriculum = curriculum(profile, "CURR-A");
+        UUID course = course(profile, curriculum, "TEST101", "Môn A", "3");
+        select(profile, curriculum);
+        for (int term : new int[] {0, 100})
+            assertThatThrownBy(() -> jdbc.update("""
+                    insert into study_plan_course(id,profile_id,curriculum_id,course_id,planned_term,created_at,updated_at)
+                    values (?,?,?,?,?,now(),now())
+                    """, UUID.randomUUID(), profile, curriculum, course, term))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbc.update("""
+                insert into study_plan_course(id,profile_id,curriculum_id,course_id,planned_term,created_at,updated_at)
+                values (?,?,?,?,1,now(),now() - interval '1 day')
+                """, UUID.randomUUID(), profile, curriculum, course))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        assign(owner, curriculum, course, "1");
+        assertThatThrownBy(() -> jdbc.update("""
+                insert into study_plan_course(id,profile_id,curriculum_id,course_id,planned_term,created_at,updated_at)
+                values (?,?,?,?,2,now(),now())
+                """, UUID.randomUUID(), profile, curriculum, course))
+                .isInstanceOf(DataIntegrityViolationException.class);
+        verifyNoInteractions(portal);
+    }
+}

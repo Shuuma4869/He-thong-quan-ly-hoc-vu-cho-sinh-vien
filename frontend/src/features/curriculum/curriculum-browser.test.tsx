@@ -42,6 +42,7 @@ describe("Persisted curriculum browser", () => {
     expect(api.selectCurriculum).not.toHaveBeenCalled();
     await userEvent.click(screen.getByRole("button", { name: "Đặt làm chương trình theo dõi" }));
     expect(await screen.findAllByText("Đang theo dõi trong AMS")).toHaveLength(2);
+    expect(screen.getByRole("link", { name: "Mở kế hoạch học kỳ" })).toHaveAttribute("href", "/planner");
     expect(screen.queryByText("Bạn chưa chọn chương trình để theo dõi.")).not.toBeInTheDocument();
     await userEvent.click(screen.getByRole("button", { name: "Bỏ chương trình theo dõi" }));
     expect(await screen.findByText("Bạn chưa chọn chương trình để theo dõi.")).toBeInTheDocument();

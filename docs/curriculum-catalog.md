@@ -6,13 +6,13 @@ Trang `/curriculum` dành cho tài khoản AMS đã đăng nhập. Trang đọc 
 
 **Chương trình** liệt kê các chương trình đã lưu của hồ sơ. Nếu có một chương trình, trang mở ngay phần chi tiết. Nếu có nhiều chương trình, dropdown chỉ chọn bản ghi **đang xem**. Chương trình đầu tiên là mặc định hiển thị theo thứ tự mã và UUID; AMS không tự chọn nó để theo dõi, kể cả khi danh sách chỉ có một chương trình.
 
-Card **Chương trình theo dõi trong AMS** là lựa chọn riêng của người dùng. Khi đang xem chương trình muốn theo dõi, bấm **Đặt làm chương trình theo dõi**; có thể chuyển sang xem chương trình khác mà lựa chọn vẫn giữ nguyên, đổi lựa chọn hoặc bấm **Bỏ chương trình theo dõi**. Thao tác bỏ chọn không xóa chương trình hay môn đã lưu. Đây chỉ là mốc cho tính năng kế hoạch học tập sau này, **không phải** chương trình hiện hành được Phenikaa xác nhận.
+Card **Chương trình theo dõi trong AMS** là lựa chọn riêng của người dùng. Khi đang xem chương trình muốn theo dõi, bấm **Đặt làm chương trình theo dõi**; có thể chuyển sang xem chương trình khác mà lựa chọn vẫn giữ nguyên, đổi lựa chọn hoặc bấm **Bỏ chương trình theo dõi**. Thao tác bỏ chọn không xóa chương trình hay môn đã lưu. Đây là mốc cho [kế hoạch học kỳ cá nhân](study-planner.md), **không phải** chương trình hiện hành được Phenikaa xác nhận.
 
 Ba số tóm tắt là số môn có liên kết đã lưu, số nhóm đã lưu và tín chỉ quy định của chương trình. Chúng không nói sinh viên đã học được bao nhiêu. Chẳng hạn chương trình có yêu cầu 120 tín chỉ thì con số 120 vẫn là yêu cầu, không phải tín chỉ tích lũy.
 
 Nhóm giữ phân loại **Bắt buộc** hoặc **Tự chọn** theo dữ liệu đã lưu. Tín chỉ tối thiểu và số môn tối thiểu là hai yêu cầu riêng. Nhóm gồm bốn môn, mỗi môn ba tín chỉ, có thể chỉ yêu cầu chọn sáu tín chỉ; không được thay yêu cầu sáu bằng tổng mười hai. Khi một yêu cầu chưa xác định, màn hình ghi rõ **Chưa xác định**, không hiển thị 0. Giá trị 0 thật trong database vẫn hiển thị 0.
 
-Mỗi môn trong chương trình có mã, tên, tín chỉ, loại yêu cầu, nhóm nếu đã có và kỳ kế hoạch nếu đã lưu. Kỳ kế hoạch không phải học kỳ sinh viên đang học môn đó. Tín chỉ giữ phần thập phân: 1.5 không bị làm tròn thành 1 hay 2. Khóa và phiên bản chương trình chưa biết cũng không được đoán từ tên chương trình.
+Mỗi môn trong chương trình có mã, tên, tín chỉ, loại yêu cầu, nhóm nếu đã có và **kỳ gợi ý trong dữ liệu chương trình** nếu đã lưu. Kỳ gợi ý không phải học kỳ sinh viên đang học môn đó và không tự xếp môn vào kế hoạch cá nhân. Tín chỉ giữ phần thập phân: 1.5 không bị làm tròn thành 1 hay 2. Khóa và phiên bản chương trình chưa biết cũng không được đoán từ tên chương trình.
 
 **Danh mục môn** chứa mọi Course của hồ sơ, kể cả môn chưa có CurriculumCourse. Nhãn **Chưa có liên kết đã lưu** chỉ nói về dữ liệu AMS đang có. Nó không kết luận môn nằm ngoài chương trình, là tự chọn hoặc không cần học. Một môn có thể có liên kết tới chương trình khác; nhãn “Có liên kết chương trình đã lưu” trong catalog không cam kết liên kết tới chương trình vừa xem.
 
