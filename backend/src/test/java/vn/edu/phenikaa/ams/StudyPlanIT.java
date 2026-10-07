@@ -69,6 +69,17 @@ class StudyPlanIT {
         assertThat(body).doesNotContain("profileId", "sourceId", "sourceCurriculumId", "phenikaa");
         return json.readTree(body);
     }
+    private JsonNode read(AppUser account, int scenario) throws Exception {
+        var body = mvc.perform(get(PATH + "?scenario=" + scenario).with(user(new AccountPrincipal(account))))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        assertThat(body).doesNotContain("profileId", "sourceId", "sourceCurriculumId", "phenikaa");
+        return json.readTree(body);
+    }
+    private JsonNode summaries(AppUser account) throws Exception {
+        var body = mvc.perform(get(PATH + "/scenarios").with(user(new AccountPrincipal(account))))
+                .andExpect(status().isOk()).andReturn().getResponse().getContentAsString();
+        return json.readTree(body);
+    }
     private void select(UUID profile, UUID curriculum) {
         jdbc.update("update student_profile set curriculum_id = ? where id = ?", curriculum, profile);
     }
@@ -76,6 +87,21 @@ class StudyPlanIT {
         mvc.perform(put(path(curriculum, course)).with(user(new AccountPrincipal(account))).with(csrf())
                 .contentType("application/json").content("{\"plannedTerm\":" + term + "}"))
                 .andExpect(status().isNoContent());
+    }
+    private void assign(AppUser account, UUID curriculum, UUID course, String term, int scenario) throws Exception {
+        mvc.perform(put(path(curriculum, course) + "?scenario=" + scenario)
+                .with(user(new AccountPrincipal(account))).with(csrf())
+                .contentType("application/json").content("{\"plannedTerm\":" + term + "}"))
+                .andExpect(status().isNoContent());
+    }
+    private void copy(AppUser account, int source, int target) throws Exception {
+        mvc.perform(post(PATH + "/scenarios/" + target + "/copy").with(user(new AccountPrincipal(account)))
+                .with(csrf()).contentType("application/json").content("{\"sourceScenario\":" + source + "}"))
+                .andExpect(status().isNoContent());
+    }
+    private void clear(AppUser account, int scenario) throws Exception {
+        mvc.perform(delete(PATH + "/scenarios/" + scenario).with(user(new AccountPrincipal(account)))
+                .with(csrf())).andExpect(status().isNoContent());
     }
 
     @Test void emptyAndSelectedPlansDoNotAutoPopulate() throws Exception {
@@ -160,8 +186,8 @@ class StudyPlanIT {
         mvc.perform(delete(path(firstCurriculum, secondCourse)).with(user(new AccountPrincipal(first))).with(csrf()))
                 .andExpect(status().isNotFound());
         assertThatThrownBy(() -> jdbc.update("""
-                insert into study_plan_course(id,profile_id,curriculum_id,course_id,planned_term,created_at,updated_at)
-                values (?,?,?,?,1,now(),now())
+                insert into study_plan_course(id,profile_id,curriculum_id,scenario_no,course_id,planned_term,created_at,updated_at)
+                values (?,?,?,1,?,1,now(),now())
                 """, UUID.randomUUID(), firstProfile, firstCurriculum, secondCourse))
                 .isInstanceOf(DataIntegrityViolationException.class);
         assertThat(read(second).at("/terms").isEmpty()).isTrue();
@@ -276,21 +302,251 @@ class StudyPlanIT {
         select(profile, curriculum);
         for (int term : new int[] {0, 100})
             assertThatThrownBy(() -> jdbc.update("""
-                    insert into study_plan_course(id,profile_id,curriculum_id,course_id,planned_term,created_at,updated_at)
-                    values (?,?,?,?,?,now(),now())
+                    insert into study_plan_course(id,profile_id,curriculum_id,scenario_no,course_id,planned_term,created_at,updated_at)
+                    values (?,?,?,1,?,?,now(),now())
                     """, UUID.randomUUID(), profile, curriculum, course, term))
                     .isInstanceOf(DataIntegrityViolationException.class);
         assertThatThrownBy(() -> jdbc.update("""
-                insert into study_plan_course(id,profile_id,curriculum_id,course_id,planned_term,created_at,updated_at)
-                values (?,?,?,?,1,now(),now() - interval '1 day')
+                insert into study_plan_course(id,profile_id,curriculum_id,scenario_no,course_id,planned_term,created_at,updated_at)
+                values (?,?,?,1,?,1,now(),now() - interval '1 day')
                 """, UUID.randomUUID(), profile, curriculum, course))
                 .isInstanceOf(DataIntegrityViolationException.class);
         assign(owner, curriculum, course, "1");
         assertThatThrownBy(() -> jdbc.update("""
-                insert into study_plan_course(id,profile_id,curriculum_id,course_id,planned_term,created_at,updated_at)
-                values (?,?,?,?,2,now(),now())
+                insert into study_plan_course(id,profile_id,curriculum_id,scenario_no,course_id,planned_term,created_at,updated_at)
+                values (?,?,?,1,?,2,now(),now())
                 """, UUID.randomUUID(), profile, curriculum, course))
                 .isInstanceOf(DataIntegrityViolationException.class);
+        verifyNoInteractions(portal);
+    }
+
+    @Test void defaultsToScenarioOneAndSummarizesFiveIndependentScenarios() throws Exception {
+        var owner = account();
+        assertThat(read(owner).at("/scenarioNo").asInt()).isEqualTo(1);
+        assertThat(read(owner, 5).at("/scenarioNo").asInt()).isEqualTo(5);
+        assertThat(summaries(owner).at("/curriculum").isNull()).isTrue();
+        assertThat(summaries(owner).at("/scenarios").isEmpty()).isTrue();
+        UUID profile = profile(owner), curriculum = curriculum(profile, "CURR-A");
+        UUID first = course(profile, curriculum, "TEST101", "Môn A", "3.25");
+        UUID second = course(profile, curriculum, "TEST102", "Môn B", "4.00");
+        select(profile, curriculum);
+        assign(owner, curriculum, first, "1");
+        assign(owner, curriculum, second, "2");
+        assign(owner, curriculum, first, "3", 2);
+        assertThat(read(owner).at("/terms/0/courses/0/courseId").asText()).isEqualTo(first.toString());
+        assertThat(read(owner, 2).at("/terms/0/plannedTerm").asInt()).isEqualTo(3);
+        assertThat(read(owner, 5).at("/terms").isEmpty()).isTrue();
+        var list = summaries(owner).at("/scenarios");
+        assertThat(list.size()).isEqualTo(5);
+        assertThat(list.get(0).get("courseCount").asInt()).isEqualTo(2);
+        assertThat(list.get(0).get("termCount").asInt()).isEqualTo(2);
+        assertThat(list.get(0).get("plannedCredits").decimalValue()).isEqualByComparingTo("7.25");
+        assertThat(list.get(1).get("courseCount").asInt()).isEqualTo(1);
+        assertThat(list.get(1).get("plannedCredits").decimalValue()).isEqualByComparingTo("3.25");
+        assertThat(list.get(4).get("courseCount").asInt()).isZero();
+        assertThat(list.get(4).get("termCount").asInt()).isZero();
+        assertThat(list.get(4).get("plannedCredits").decimalValue()).isEqualByComparingTo("0");
+        mvc.perform(delete(path(curriculum, first) + "?scenario=2").with(user(new AccountPrincipal(owner)))
+                .with(csrf())).andExpect(status().isNoContent());
+        assertThat(read(owner, 2).at("/terms").isEmpty()).isTrue();
+        assertThat(read(owner).at("/terms/0/courses/0/courseId").asText()).isEqualTo(first.toString());
+        verifyNoInteractions(portal);
+    }
+
+    @Test void copyMakesIndependentAssignmentsAndClearOnlyAffectsTarget() throws Exception {
+        var owner = account(); UUID profile = profile(owner), curriculum = curriculum(profile, "CURR-A");
+        UUID first = course(profile, curriculum, "TEST101", "Môn A", "3");
+        UUID second = course(profile, curriculum, "TEST102", "Môn B", "4");
+        select(profile, curriculum);
+        assign(owner, curriculum, first, "1");
+        assign(owner, curriculum, second, "2");
+        UUID sourceId = jdbc.queryForObject("select id from study_plan_course where course_id = ? and scenario_no = 1", UUID.class, second);
+        java.time.Instant sourceCreated = jdbc.queryForObject("select created_at from study_plan_course where id = ?",
+                java.sql.Timestamp.class, sourceId).toInstant();
+        String[] unchanged = {"student_course", "academic_result", "semester", "class_section", "class_session",
+                "exam", "academic_snapshot", "schedule_change", "notification_outbox"};
+        long[] before = new long[unchanged.length];
+        for (int i = 0; i < unchanged.length; i++)
+            before[i] = jdbc.queryForObject("select count(*) from " + unchanged[i], Long.class);
+        copy(owner, 1, 2);
+        assertThat(read(owner, 2).at("/terms/1/courses/0/courseId").asText()).isEqualTo(second.toString());
+        UUID copiedId = jdbc.queryForObject("select id from study_plan_course where course_id = ? and scenario_no = 2", UUID.class, second);
+        assertThat(copiedId).isNotEqualTo(sourceId);
+        assertThat(jdbc.queryForObject("select created_at from study_plan_course where id = ?",
+                java.sql.Timestamp.class, copiedId).toInstant()).isAfter(sourceCreated);
+        mvc.perform(post(PATH + "/scenarios/2/copy").with(user(new AccountPrincipal(owner))).with(csrf())
+                .contentType("application/json").content("{\"sourceScenario\":1}"))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("STUDY_PLAN_SCENARIO_NOT_EMPTY"));
+        assign(owner, curriculum, second, "3", 2);
+        assertThat(read(owner, 2).at("/terms/1/plannedTerm").asInt()).isEqualTo(3);
+        assertThat(read(owner).at("/terms/1/plannedTerm").asInt()).isEqualTo(2);
+        clear(owner, 2); clear(owner, 2);
+        assertThat(read(owner, 2).at("/terms").isEmpty()).isTrue();
+        assertThat(read(owner).at("/terms/1/courses/0/courseId").asText()).isEqualTo(second.toString());
+        copy(owner, 5, 2);
+        assertThat(read(owner, 2).at("/terms").isEmpty()).isTrue();
+        copy(owner, 1, 5);
+        assertThat(read(owner, 5).at("/terms/1/courses/0/courseId").asText()).isEqualTo(second.toString());
+        clear(owner, 5);
+        for (int i = 0; i < unchanged.length; i++)
+            assertThat(jdbc.queryForObject("select count(*) from " + unchanged[i], Long.class)).isEqualTo(before[i]);
+        verifyNoInteractions(portal);
+    }
+
+    @Test void scenarioValidationAuthenticationAndOwnershipAreEnforced() throws Exception {
+        var owner = account(); var other = account();
+        UUID profile = profile(owner), foreignProfile = profile(other);
+        UUID curriculum = curriculum(profile, "CURR-A"), foreign = curriculum(foreignProfile, "CURR-B");
+        UUID course = course(profile, curriculum, "TEST101", "Môn A", "3");
+        UUID foreignCourse = course(foreignProfile, foreign, "TEST201", "Môn B", "4");
+        select(profile, curriculum); select(foreignProfile, foreign);
+        for (String invalid : new String[] {"0", "6", "2.5", "abc"}) {
+            mvc.perform(get(PATH + "?scenario=" + invalid).with(user(new AccountPrincipal(owner))))
+                    .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_STUDY_PLAN_SCENARIO"));
+            mvc.perform(put(path(curriculum, course) + "?scenario=" + invalid).with(user(new AccountPrincipal(owner)))
+                    .with(csrf()).contentType("application/json").content("{\"plannedTerm\":1}"))
+                    .andExpect(status().isBadRequest());
+            mvc.perform(delete(PATH + "/scenarios/" + invalid).with(user(new AccountPrincipal(owner)))
+                    .with(csrf())).andExpect(status().isBadRequest());
+        }
+        mvc.perform(post(PATH + "/scenarios/1/copy").with(user(new AccountPrincipal(owner))).with(csrf())
+                .contentType("application/json").content("{\"sourceScenario\":1}"))
+                .andExpect(status().isBadRequest()).andExpect(jsonPath("$.code").value("INVALID_STUDY_PLAN_SCENARIO"));
+        mvc.perform(post(PATH + "/scenarios/2/copy").with(user(new AccountPrincipal(owner))).with(csrf())
+                .contentType("application/json").content("{\"sourceScenario\":2.5}"))
+                .andExpect(status().isBadRequest());
+        mvc.perform(get(PATH + "/scenarios")).andExpect(status().isUnauthorized());
+        mvc.perform(post(PATH + "/scenarios/2/copy").with(user(new AccountPrincipal(owner)))
+                .contentType("application/json").content("{\"sourceScenario\":1}"))
+                .andExpect(status().isForbidden());
+        mvc.perform(delete(PATH + "/scenarios/2").with(user(new AccountPrincipal(owner))))
+                .andExpect(status().isForbidden());
+        mvc.perform(put(path(foreign, foreignCourse) + "?scenario=2").with(user(new AccountPrincipal(owner)))
+                .with(csrf()).contentType("application/json").content("{\"plannedTerm\":1}"))
+                .andExpect(status().isConflict());
+        mvc.perform(put(path(curriculum, foreignCourse) + "?scenario=2").with(user(new AccountPrincipal(owner)))
+                .with(csrf()).contentType("application/json").content("{\"plannedTerm\":1}"))
+                .andExpect(status().isNotFound());
+        clear(owner, 2);
+        assertThat(read(other, 2).at("/terms").isEmpty()).isTrue();
+        assertThat(summaries(owner).at("/curriculum/id").asText()).isEqualTo(curriculum.toString());
+        verifyNoInteractions(portal);
+    }
+
+    @Test void scenariosSurviveCurriculumAndSelectionChanges() throws Exception {
+        var owner = account(); UUID profile = profile(owner);
+        UUID first = curriculum(profile, "CURR-A"), second = curriculum(profile, "CURR-B");
+        UUID firstCourse = course(profile, first, "TEST101", "Môn A", "3");
+        UUID secondCourse = course(profile, second, "TEST201", "Môn B", "4");
+        select(profile, first); assign(owner, first, firstCourse, "2", 2);
+        select(profile, second); assign(owner, second, secondCourse, "3", 2);
+        assertThat(read(owner, 2).at("/terms/0/courses/0/courseId").asText()).isEqualTo(secondCourse.toString());
+        select(profile, null);
+        assertThat(read(owner, 2).at("/curriculum").isNull()).isTrue();
+        assertThat(read(owner, 2).at("/terms").isEmpty()).isTrue();
+        assertThat(summaries(owner).at("/scenarios").isEmpty()).isTrue();
+        mvc.perform(delete(PATH + "/scenarios/2").with(user(new AccountPrincipal(owner))).with(csrf()))
+                .andExpect(status().isConflict()).andExpect(jsonPath("$.code").value("CURRICULUM_SELECTION_REQUIRED"));
+        select(profile, first);
+        assertThat(read(owner, 2).at("/terms/0/courses/0/courseId").asText()).isEqualTo(firstCourse.toString());
+        assertThat(jdbc.queryForObject("select count(*) from study_plan_course where profile_id = ?", Integer.class, profile)).isEqualTo(2);
+        verifyNoInteractions(portal);
+    }
+
+    @Test void databaseEnforcesScenarioRangeUniquePerScenarioAndProfileMembership() throws Exception {
+        var owner = account(); var other = account();
+        UUID profile = profile(owner), foreignProfile = profile(other);
+        UUID curriculum = curriculum(profile, "CURR-A"), foreign = curriculum(foreignProfile, "CURR-B");
+        UUID course = course(profile, curriculum, "TEST101", "Môn A", "3");
+        UUID foreignCourse = course(foreignProfile, foreign, "TEST201", "Môn B", "4");
+        select(profile, curriculum);
+        for (int scenario : new int[] {0, 6}) {
+            assertThatThrownBy(() -> jdbc.update("""
+                    insert into study_plan_course(id,profile_id,curriculum_id,scenario_no,course_id,planned_term,created_at,updated_at)
+                    values (?,?,?,?,?,1,now(),now())
+                    """, UUID.randomUUID(), profile, curriculum, scenario, course))
+                    .isInstanceOf(DataIntegrityViolationException.class);
+        }
+        assign(owner, curriculum, course, "1");
+        assign(owner, curriculum, course, "2", 2);
+        assertThat(jdbc.queryForObject("select count(*) from study_plan_course where profile_id = ? and course_id = ?",
+                Integer.class, profile, course)).isEqualTo(2);
+        assertThatThrownBy(() -> jdbc.update("""
+                insert into study_plan_course(id,profile_id,curriculum_id,scenario_no,course_id,planned_term,created_at,updated_at)
+                values (?,?,?,1,?,3,now(),now())
+                """, UUID.randomUUID(), profile, curriculum, course)).isInstanceOf(DataIntegrityViolationException.class);
+        assertThatThrownBy(() -> jdbc.update("""
+                insert into study_plan_course(id,profile_id,curriculum_id,scenario_no,course_id,planned_term,created_at,updated_at)
+                values (?,?,?,3,?,3,now(),now())
+                """, UUID.randomUUID(), profile, curriculum, foreignCourse)).isInstanceOf(DataIntegrityViolationException.class);
+        verifyNoInteractions(portal);
+    }
+
+    @Test void copyWaitsForSelectionChangeAndCannotWriteOldCurriculum() throws Exception {
+        var owner = account(); UUID profile = profile(owner);
+        UUID first = curriculum(profile, "CURR-A"), second = curriculum(profile, "CURR-B");
+        UUID course = course(profile, first, "TEST101", "Môn A", "3");
+        select(profile, first); assign(owner, first, course, "1");
+        var held = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        try (var workers = Executors.newFixedThreadPool(2)) {
+            var switcher = workers.submit(() -> new TransactionTemplate(transactions).execute(status -> {
+                jdbc.queryForObject("select id from student_profile where id = ? for update", UUID.class, profile);
+                jdbc.update("update student_profile set curriculum_id = ? where id = ?", second, profile);
+                held.countDown();
+                try { if (!release.await(5, TimeUnit.SECONDS)) throw new IllegalStateException("Selection lock timeout"); }
+                catch (InterruptedException ex) { Thread.currentThread().interrupt(); throw new IllegalStateException(ex); }
+                return null;
+            }));
+            assertThat(held.await(5, TimeUnit.SECONDS)).isTrue();
+            var copying = workers.submit(() -> mvc.perform(post(PATH + "/scenarios/2/copy")
+                    .with(user(new AccountPrincipal(owner))).with(csrf())
+                    .contentType("application/json").content("{\"sourceScenario\":1}"))
+                    .andExpect(status().isConflict())
+                    .andExpect(jsonPath("$.code").value("STUDY_PLAN_SELECTION_CHANGED")));
+            try { assertThatThrownBy(() -> copying.get(200, TimeUnit.MILLISECONDS)).isInstanceOf(TimeoutException.class); }
+            finally { release.countDown(); }
+            switcher.get(10, TimeUnit.SECONDS);
+            copying.get(10, TimeUnit.SECONDS);
+        }
+        assertThat(read(owner, 2).at("/terms").isEmpty()).isTrue();
+        select(profile, first);
+        assertThat(read(owner, 2).at("/terms").isEmpty()).isTrue();
+        assertThat(jdbc.queryForObject("select count(*) from study_plan_course where profile_id = ?", Integer.class, profile)).isEqualTo(1);
+        verifyNoInteractions(portal);
+    }
+
+    @Test void copyAndCourseMutationSerializeOnTheProfile() throws Exception {
+        var owner = account(); UUID profile = profile(owner), curriculum = curriculum(profile, "CURR-A");
+        UUID sourceCourse = course(profile, curriculum, "TEST101", "Môn A", "3");
+        UUID addedCourse = course(profile, curriculum, "TEST102", "Môn B", "4");
+        select(profile, curriculum); assign(owner, curriculum, sourceCourse, "1");
+        var start = new CountDownLatch(1);
+        try (var workers = Executors.newFixedThreadPool(2)) {
+            var copying = workers.submit(() -> {
+                start.await();
+                return mvc.perform(post(PATH + "/scenarios/2/copy")
+                        .with(user(new AccountPrincipal(owner))).with(csrf())
+                        .contentType("application/json").content("{\"sourceScenario\":1}"))
+                        .andReturn().getResponse();
+            });
+            var adding = workers.submit(() -> {
+                start.await();
+                assign(owner, curriculum, addedCourse, "2", 2);
+                return null;
+            });
+            start.countDown();
+            var copyResponse = copying.get(10, TimeUnit.SECONDS);
+            adding.get(10, TimeUnit.SECONDS);
+            assertThat(copyResponse.getStatus()).isIn(204, 409);
+            if (copyResponse.getStatus() == 409)
+                assertThat(json.readTree(copyResponse.getContentAsString()).get("code").asText())
+                        .isEqualTo("STUDY_PLAN_SCENARIO_NOT_EMPTY");
+            var target = read(owner, 2);
+            assertThat(target.toString()).contains(addedCourse.toString());
+            assertThat(target.toString().contains(sourceCourse.toString())).isEqualTo(copyResponse.getStatus() == 204);
+            assertThat(read(owner).toString()).contains(sourceCourse.toString()).doesNotContain(addedCourse.toString());
+        }
         verifyNoInteractions(portal);
     }
 }

@@ -29,7 +29,7 @@ erDiagram
     curriculum ||--o{ curriculum_course : contains
     student_profile ||--o{ study_plan_course : plans
     curriculum ||--o{ study_plan_course : plan_scope
-    curriculum_course ||--o| study_plan_course : planned_assignment
+    curriculum_course ||--o{ study_plan_course : planned_by_scenario
     curriculum_group o|--o{ curriculum_course : groups_courses
     curriculum ||--o| phenikaa_curriculum_mapping : source_identity
     course ||--o| phenikaa_course_mapping : source_identity
@@ -58,7 +58,9 @@ erDiagram
 
 Phase 16A dùng lại cột và khóa ngoại có từ V3, không thêm migration. GET lựa chọn trả null nếu chưa có hồ sơ; PUT chọn curriculum thuộc đúng hồ sơ; DELETE đặt `curriculum_id` về null mà không xóa curriculum. Import/refresh cùng curriculum giữ UUID nên lựa chọn vẫn trỏ tới bản ghi đó; import một curriculum khác không tự đổi lựa chọn. Đây mới là mốc cho phần tiến độ/kế hoạch sau này, chưa có dữ liệu để tính tín chỉ đã đạt, còn thiếu hoặc GPA.
 
-V12 thêm `study_plan_course` cho kế hoạch học kỳ cá nhân. Mỗi hàng giữ UUID nội bộ, `profile_id`, `curriculum_id`, `course_id`, số `planned_term` từ 1 đến 99 và thời điểm tạo/cập nhật. Unique `(profile_id, curriculum_id, course_id)` ngăn xếp trùng một môn; FK ghép cùng ba cột sang `curriculum_course` ngăn nối sai hồ sơ hoặc môn ngoài chương trình. Index `(profile_id, curriculum_id, planned_term)` phục vụ đọc từng kế hoạch. Không có cascade xóa. Bảng không giữ tên/tín chỉ, không tham chiếu `Semester`, `StudentCourse` hay `AcademicResult`. Đổi/bỏ lựa chọn trong hồ sơ chỉ đổi kế hoạch đang xem, không xóa các hàng cũ. [Hành vi API và UI](study-planner.md) ghi rõ phần người dùng có thể thao tác.
+V12 thêm `study_plan_course` cho kế hoạch học kỳ cá nhân. Mỗi hàng giữ UUID nội bộ, `profile_id`, `curriculum_id`, `course_id`, số `planned_term` từ 1 đến 99 và thời điểm tạo/cập nhật. Lúc đó unique `(profile_id, curriculum_id, course_id)` ngăn xếp trùng một môn; FK ghép cùng ba cột sang `curriculum_course` ngăn nối sai hồ sơ hoặc môn ngoài chương trình. Index ban đầu là `(profile_id, curriculum_id, planned_term)`. Không có cascade xóa. Bảng không giữ tên/tín chỉ, không tham chiếu `Semester`, `StudentCourse` hay `AcademicResult`. Đổi/bỏ lựa chọn trong hồ sơ chỉ đổi kế hoạch đang xem, không xóa các hàng cũ. [Hành vi API và UI](study-planner.md) ghi rõ phần người dùng có thể thao tác.
+
+V13 giữ nguyên từng assignment từ V12 và gán `scenario_no = 1`. Cột này bắt buộc, chỉ nhận 1–5 và không có default lâu dài. Unique mới là `(profile_id, curriculum_id, scenario_no, course_id)`: cùng môn được dùng trong nhiều phương án, nhưng chỉ một lần trong mỗi phương án. Index đọc là `(profile_id, curriculum_id, scenario_no, planned_term)`; index cũ được bỏ. Không thêm bảng gốc cho phương án vì hiện chưa có tên, trạng thái hoặc metadata riêng. Khóa ngoại membership và nguyên tắc không cascade vẫn giữ nguyên.
 
 ## Môn học, lớp mở và lần học
 
@@ -132,6 +134,7 @@ Unique index phục vụ cả chống trùng và tra cứu theo owner/identity. 
 - V10: một kết nối Google Calendar cho mỗi user, token mã hóa và ID lịch phụ; không có bảng sự kiện.
 - V11: xác minh email và outbox cảnh báo đồng bộ.
 - V12: assignment môn vào kỳ kế hoạch cá nhân; không tạo học kỳ hoặc kết quả học tập.
+- V13: tối đa năm phương án local trên mỗi curriculum; assignment V12 chuyển thành Phương án 1.
 
 ## Kết nối Google Calendar Phase 7A
 
