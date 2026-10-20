@@ -1,0 +1,21 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "AMS Desktop Dev",
+  "version": "0.1.0",
+  "identifier": "com.shuuma.ams.dev",
+  "build": {
+    "beforeDevCommand": "pnpm dev --hostname localhost --port 3000",
+    "devUrl": "http://localhost:3000",
+    "frontendDist": "http://localhost:3000"
+  },
+  "app": {
+    "windows": [],
+    "security": {
+      "capabilities": []
+    }
+  },
+  "bundle": {
+    "active": false,
+    "icon": ["../src/app/favicon.ico"]
+  }
+}

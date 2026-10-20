@@ -36,13 +36,14 @@ Dashboard đọc riêng trạng thái kết nối Phenikaa, Google Calendar, lư
 - Frontend: Next.js 16, React, TypeScript, Tailwind CSS, shadcn/ui foundation, TanStack Query, Zustand, Vitest và Playwright.
 - Backend: Java 21, Spring Boot 4, Spring Security, Spring Data JPA, Flyway, PostgreSQL, Redis, OpenAPI và Testcontainers.
 - Hạ tầng local: Docker Compose.
+- Desktop thử nghiệm: Tauri 2 trên Windows, chỉ chạy với các dịch vụ local; chưa có installer cho người dùng cuối.
 - CI: GitHub Actions và Dependabot.
 
 ## Cấu trúc repository
 
 ```text
 .
-├── frontend/          Next.js application
+├── frontend/          Next.js application và Tauri shell local/dev trong src-tauri/
 ├── backend/           Spring Boot API và integration contracts
 ├── docs/              Tài liệu yêu cầu, kiến trúc, setup và security
 ├── .github/           CI và dependency updates
@@ -52,7 +53,7 @@ Dashboard đọc riêng trạng thái kết nối Phenikaa, Google Calendar, lư
 
 ## Chạy local
 
-Yêu cầu: Git, Java 21, Node.js 24 LTS trở lên, pnpm và Docker Desktop.
+Yêu cầu: Git, Java 21, Node.js 24 LTS, pnpm và Docker Desktop.
 
 ```powershell
 Copy-Item .env.example .env
@@ -75,6 +76,8 @@ pnpm dev
 - Backend health: `http://localhost:8080/api/health`
 - Actuator health: `http://localhost:8080/actuator/health`
 - Swagger UI: `http://localhost:8080/swagger-ui.html`
+
+Muốn mở giao diện trong cửa sổ desktop khi phát triển, xem [cách chạy Tauri local](docs/development-setup.md#cửa-sổ-desktop-localdev). Bản này vẫn cần backend, PostgreSQL, Redis và Next.js chạy trên máy lập trình; chưa phải ứng dụng cài đặt độc lập.
 
 Mở `/register` để tạo tài khoản sinh viên, sau đó đăng nhập tại `/login`. Không có tài khoản admin mặc định. `/settings` lưu email nhận thông báo, múi giờ, ngôn ngữ ưu tiên và giao diện. Muốn nhận cảnh báo đồng bộ, người dùng cần xác minh địa chỉ rồi tự bật cảnh báo; người vận hành cũng phải bật và cấu hình email. [Hướng dẫn cấu hình và giới hạn](docs/email-notifications.md).
 

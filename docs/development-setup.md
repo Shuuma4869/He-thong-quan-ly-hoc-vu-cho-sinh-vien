@@ -4,7 +4,7 @@
 
 - Git 2.49 trở lên.
 - Java 21; Maven toàn cục không bắt buộc vì có Maven Wrapper.
-- Node.js 24 LTS trở lên và pnpm.
+- Node.js 24 LTS và pnpm. Node 25 chưa nằm trong môi trường CI; trên máy kiểm tra, Turbopack build bằng Node 25 lỗi khi tạo tiến trình CSS, còn Node 24 build thành công.
 - Docker Desktop với Linux containers.
 
 PostgreSQL của AMS dùng cổng host `5433` mặc định để không xung đột với PostgreSQL Windows thường dùng `5432`.
@@ -69,3 +69,21 @@ Dashboard gọi `/api/health` bằng TanStack Query, kiểm tra response bằng 
 Kiểm tra giao diện: chạy `pnpm build`, `pnpm exec playwright install chromium`, rồi `pnpm test:e2e`. Cần Java 21, Docker và hai cổng `3000`/`8080` trống. Playwright khởi động frontend production và backend bằng `spring-boot:test-run`, dùng PostgreSQL/Redis Testcontainers riêng. Đăng ký, đăng nhập, settings và đăng xuất đi qua API thật với tài khoản tổng hợp `@example.test`; chỉ tình huống health mất kết nối được chặn request để giả lập lỗi.
 
 Sau khi di chuyển route, chạy `pnpm exec next typegen` để cập nhật kiểu route trước typecheck. Không commit thư mục build, `test-results`, `playwright-report`, trace hoặc thông tin session trong kết quả test.
+
+## Cửa sổ desktop local/dev
+
+`frontend/src-tauri` là cửa sổ Tauri 2 dùng để thử AMS trên Windows. Nó mở chính ứng dụng Next.js chạy tại `http://localhost:3000`; request `/api` vẫn đi qua proxy Next.js tới backend local. Vì Next.js hiện dùng cookie trong server component và rewrite `/api`, không thể đóng gói nguyên frontend thành static export mà vẫn giữ đăng nhập hoạt động. Cửa sổ này không nhúng backend, PostgreSQL hay Redis.
+
+Cần cài Rust toolchain cho target Windows MSVC, Microsoft C++ Build Tools và WebView2 theo [hướng dẫn Tauri](https://v2.tauri.app/start/prerequisites/). Khởi động Compose và backend như các bước phía trên. Sau đó mở terminal khác:
+
+```powershell
+cd frontend
+pnpm install --frozen-lockfile
+pnpm desktop:dev
+```
+
+Lệnh cuối tự khởi động Next.js trên `localhost:3000` rồi mở cửa sổ. Đừng chạy `pnpm dev` ở cổng 3000 trong một terminal khác cùng lúc. Tài khoản AMS trong WebView có cookie riêng với trình duyệt thường; hãy đăng nhập lại trong cửa sổ. Nếu backend chưa chạy, giao diện sẽ báo không kết nối được API.
+
+Cửa sổ chỉ cho điều hướng đến đúng `http://localhost:3000`; yêu cầu mở cửa sổ mới bị từ chối. Không cấp quyền Tauri để đọc file, chạy lệnh hệ thống hay truy cập credential. Vì thế các luồng chuyển sang website bên ngoài, đặc biệt Google OAuth, **chưa hoạt động trong cửa sổ này**. Hãy thử những luồng đó bằng trình duyệt thường; không đổi redirect hoặc đưa token vào desktop để lách giới hạn.
+
+Đây là bản để phát triển và kiểm tra tương thích, không phải bản phát hành. Chưa có frontend/backend HTTPS production, installer, ký mã, auto-update hoặc kiểm thử cài đặt trên máy người dùng. Cấu hình chủ động tắt bundling và không cho biên dịch release để tránh phát hành nhầm một cửa sổ phụ thuộc vào máy local. Không chuyển ứng dụng sang `next export` hoặc bật quyền native trước khi thiết kế lại ranh giới xác thực và review bảo mật.

@@ -1,0 +1,11 @@
+[package]
+name = "ams-desktop-dev"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.90"
+
+[build-dependencies]
+tauri-build = { version = "=2.7.3", features = [] }
+
+[dependencies]
+tauri = { version = "=2.12.4", features = [] }

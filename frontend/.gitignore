@@ -16,6 +16,8 @@
 # next.js
 /.next/
 /out/
+/src-tauri/target/
+/src-tauri/gen/
 
 # production
 /build
