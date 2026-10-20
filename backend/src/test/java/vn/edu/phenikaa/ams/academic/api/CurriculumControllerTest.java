@@ -1,6 +1,7 @@
 package vn.edu.phenikaa.ams.academic.api;
 
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -12,6 +13,7 @@ import vn.edu.phenikaa.ams.academic.application.CurriculumQueryService;
 import vn.edu.phenikaa.ams.auth.application.AccountPrincipal;
 import vn.edu.phenikaa.ams.config.SecurityConfiguration;
 import vn.edu.phenikaa.ams.user.domain.AppUser;
+import vn.edu.phenikaa.ams.user.infrastructure.UserRepository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -25,7 +27,13 @@ class CurriculumControllerTest {
     @Autowired MockMvc mvc;
     @MockitoBean CurriculumQueryService queries;
     @MockitoBean UserDetailsService users;
-    private final AccountPrincipal principal = new AccountPrincipal(new AppUser("reader@example.test", "!synthetic-unusable", null));
+    @MockitoBean UserRepository userRepository;
+    private final AppUser account = new AppUser("reader@example.test", "!synthetic-unusable", null);
+    private final AccountPrincipal principal = new AccountPrincipal(account);
+
+    @BeforeEach void activeAccount() {
+        when(userRepository.findById(account.getId())).thenReturn(java.util.Optional.of(account));
+    }
 
     @Test void databaseFailureHasSafeCodeAndNeverLeaksSql() throws Exception {
         when(queries.catalog(any(), any())).thenThrow(new DataAccessResourceFailureException("select private_column from private_table; synthetic-private-id"));

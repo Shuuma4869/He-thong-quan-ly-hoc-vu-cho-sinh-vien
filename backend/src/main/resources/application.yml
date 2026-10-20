@@ -1,8 +1,10 @@
 spring:
   session:
     timeout: ${SESSION_TIMEOUT:30m}
-    redis:
-      namespace: ams:session
+    data:
+      redis:
+        namespace: ams:session
+        repository-type: indexed
   config:
     import: optional:file:../.env[.properties]
   application:

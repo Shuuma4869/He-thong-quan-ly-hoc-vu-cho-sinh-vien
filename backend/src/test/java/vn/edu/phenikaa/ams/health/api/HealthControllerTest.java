@@ -14,6 +14,7 @@ import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.web.servlet.MockMvc;
 import vn.edu.phenikaa.ams.config.SecurityConfiguration;
+import vn.edu.phenikaa.ams.user.infrastructure.UserRepository;
 
 @WebMvcTest(HealthController.class)
 @Import(SecurityConfiguration.class)
@@ -21,6 +22,9 @@ class HealthControllerTest {
 
     @org.springframework.test.context.bean.override.mockito.MockitoBean
     private org.springframework.security.core.userdetails.UserDetailsService userDetailsService;
+
+    @org.springframework.test.context.bean.override.mockito.MockitoBean
+    private UserRepository userRepository;
 
     @Autowired
     private MockMvc mockMvc;

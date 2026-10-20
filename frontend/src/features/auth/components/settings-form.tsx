@@ -10,6 +10,7 @@ import { settingsUpdateSchema, type CurrentUser, type Settings, type SettingsUpd
 import { currentUserKey } from "./auth-boundary";
 import { GoogleCalendarCard } from "@/features/google-calendar/google-calendar-card";
 import { EmailNotificationCard, emailStatusKey } from "@/features/notifications/email-notification-card";
+import { AccountSecurityCard } from "./account-security-card";
 
 const inputStyle = "mt-1.5 h-11 w-full rounded-lg border bg-background px-3";
 
@@ -47,6 +48,7 @@ export function SettingsForm({ user, googleResult }: { user: CurrentUser; google
       {message && <p role="status" className="text-sm text-primary">{message}</p>}{error && <p role="alert" className="text-sm text-red-600">{error}</p>}
       <Button type="submit" disabled={isSubmitting}>{isSubmitting ? "Đang lưu…" : "Lưu cài đặt"}</Button>
     </form>
+    <AccountSecurityCard userId={user.id} />
     <EmailNotificationCard userId={user.id} settings={settings} onSettingsSaved={applySettings} />
     <GoogleCalendarCard callbackResult={googleResult} userId={user.id} />
   </section>;
