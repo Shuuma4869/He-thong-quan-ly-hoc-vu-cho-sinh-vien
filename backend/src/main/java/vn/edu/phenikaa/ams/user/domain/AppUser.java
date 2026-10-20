@@ -28,6 +28,10 @@ public class AppUser {
     private Instant createdAt;
     @Column(nullable = false)
     private Instant updatedAt;
+    @Column(nullable = false)
+    private long sessionGeneration;
+    @Column(length = 64)
+    private String preservedSessionRef;
 
     protected AppUser() {}
 
@@ -40,6 +44,7 @@ public class AppUser {
         this.accountStatus = Status.ACTIVE;
         this.createdAt = Instant.now();
         this.updatedAt = createdAt;
+        this.sessionGeneration = 0;
     }
 
     @PreUpdate
@@ -53,4 +58,16 @@ public class AppUser {
     public Status getAccountStatus() { return accountStatus; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
+    public long getSessionGeneration() { return sessionGeneration; }
+    public String getPreservedSessionRef() { return preservedSessionRef; }
+
+    public void changePassword(String passwordHash, String currentSessionRef) {
+        this.passwordHash = passwordHash;
+        revokeOtherSessions(currentSessionRef);
+    }
+
+    public void revokeOtherSessions(String currentSessionRef) {
+        this.sessionGeneration++;
+        this.preservedSessionRef = currentSessionRef;
+    }
 }

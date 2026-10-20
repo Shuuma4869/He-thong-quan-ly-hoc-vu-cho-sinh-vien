@@ -7,16 +7,19 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
 import org.springframework.security.web.SecurityFilterChain;
+import org.springframework.security.web.access.intercept.AuthorizationFilter;
 import org.springframework.security.web.savedrequest.NullRequestCache;
 import org.springframework.web.cors.CorsConfiguration;
 import org.springframework.web.cors.CorsConfigurationSource;
 import org.springframework.web.cors.UrlBasedCorsConfigurationSource;
+import vn.edu.phenikaa.ams.auth.application.AccountSessionGuard;
+import vn.edu.phenikaa.ams.user.infrastructure.UserRepository;
 
 @Configuration
 public class SecurityConfiguration {
 
     @Bean
-    SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
+    SecurityFilterChain securityFilterChain(HttpSecurity http, UserRepository users) throws Exception {
         return http
                 .cors(Customizer.withDefaults())
                 .requestCache(cache -> cache.requestCache(new NullRequestCache()))
@@ -45,6 +48,7 @@ public class SecurityConfiguration {
                         .permitAll()
                         .anyRequest()
                         .authenticated())
+                .addFilterBefore(new AccountSessionGuard(users), AuthorizationFilter.class)
                 .build();
     }
 

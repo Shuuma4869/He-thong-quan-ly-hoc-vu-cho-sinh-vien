@@ -5,6 +5,7 @@ import java.time.LocalDate;
 import java.time.LocalTime;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.webmvc.test.autoconfigure.WebMvcTest;
 import org.springframework.context.annotation.Import;
@@ -18,6 +19,7 @@ import vn.edu.phenikaa.ams.academic.application.AcademicSourceQueryService.*;
 import vn.edu.phenikaa.ams.auth.application.AccountPrincipal;
 import vn.edu.phenikaa.ams.config.SecurityConfiguration;
 import vn.edu.phenikaa.ams.user.domain.AppUser;
+import vn.edu.phenikaa.ams.user.infrastructure.UserRepository;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.*;
 import static org.mockito.Mockito.*;
@@ -32,8 +34,13 @@ class AcademicSourceControllerTest {
     @Autowired MockMvc mvc;
     @MockitoBean AcademicSourceQueryService queries;
     @MockitoBean UserDetailsService users;
-    private final AccountPrincipal principal = new AccountPrincipal(
-            new AppUser("student@example.test", "!synthetic-unusable-hash", "Người dùng giả định"));
+    @MockitoBean UserRepository userRepository;
+    private final AppUser account = new AppUser("student@example.test", "!synthetic-unusable-hash", "Người dùng giả định");
+    private final AccountPrincipal principal = new AccountPrincipal(account);
+
+    @BeforeEach void activeAccount() {
+        when(userRepository.findById(account.getId())).thenReturn(java.util.Optional.of(account));
+    }
 
     @Test void requiresAmsAuthenticationForAllReadEndpoints() throws Exception {
         mvc.perform(get("/api/me/academic/source/status")).andExpect(status().isUnauthorized());
