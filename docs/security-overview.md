@@ -37,10 +37,24 @@ Profile `prod` tắt OpenAPI và bắt buộc cookie `Secure`; frontend phải �
 | `POST /api/auth/logout` | 204; hủy session |
 | `GET /api/me` | User hiện tại kèm settings, không trả hash; 401 nếu chưa xác thực, 403 nếu tài khoản bị vô hiệu hóa |
 | `PUT /api/me/settings` | JSON `notificationEmail`, `timezone`, `locale`, `theme`; chỉ cập nhật tài khoản trong session |
+| `GET /api/me/security/sessions` | Liệt kê các phiên hợp lệ của chính tài khoản; đánh dấu phiên hiện tại |
+| `DELETE /api/me/security/sessions/{sessionRef}` | Đăng xuất một phiên khác, không cho xóa phiên hiện tại |
+| `DELETE /api/me/security/sessions/others` | Đăng xuất tất cả phiên khác, giữ phiên hiện tại |
+| `PUT /api/me/security/password` | Đổi mật khẩu bằng `currentPassword` và `newPassword`; không nhận mật khẩu xác nhận |
 
-Mọi POST/PUT ở trên phải kèm cookie session và header `X-CSRF-TOKEN` lấy từ endpoint CSRF. Thiếu hoặc sai token trả 403, kể cả đăng ký/đăng nhập/đăng xuất. Token đổi sau đăng nhập và đăng xuất; frontend lấy token mới trước mỗi thao tác ghi, không tự lặp lại thao tác ghi nếu thất bại. CSRF mặc định của Spring Security vẫn bật; CORS và SameSite không thay thế CSRF.
+Mọi POST/PUT/DELETE ở trên phải kèm cookie session và header `X-CSRF-TOKEN` lấy từ endpoint CSRF. Thiếu hoặc sai token trả 403, kể cả đăng ký/đăng nhập/đăng xuất. Token đổi sau đăng nhập và đăng xuất; frontend lấy token mới trước mỗi thao tác ghi, không tự lặp lại thao tác ghi nếu thất bại. CSRF mặc định của Spring Security vẫn bật; CORS và SameSite không thay thế CSRF.
 
 Frontend dùng kiểm tra session phía server cho protected pages và current-user state phía client. Response API cá nhân có `Cache-Control: no-store`; server fetch không cache dùng chung. Kết nối lỗi không được coi là đăng nhập thành công.
+
+## Đổi mật khẩu và quản lý phiên
+
+Trang Cài đặt có phần **Bảo mật tài khoản**. Danh sách phiên chỉ dùng dữ liệu Spring Session của tài khoản đang đăng nhập. `sessionRef` trong API là SHA-256 của session ID, không phải cookie hay quyền truy cập; backend luôn tìm lại phiên trong danh sách thuộc tài khoản trước khi xóa. Giao diện không hiện mã này, địa chỉ IP hoặc tên thiết bị. Thời điểm hết hạn là ước tính theo lần truy cập cuối và giới hạn không hoạt động, không phải hạn tuyệt đối.
+
+Khi đổi mật khẩu hoặc đăng xuất tất cả phiên khác, PostgreSQL tăng `session_generation` và ghi lại mã băm của phiên được giữ. Mỗi request đã xác thực đối chiếu trạng thái tài khoản và generation với PostgreSQL. Vì thế, sau khi transaction đổi mật khẩu commit, một phiên cũ không thể tiếp tục gọi API dù lệnh dọn phiên Redis bị lỗi hoặc có lần đăng nhập bằng mật khẩu cũ chạy đồng thời. Phiên hiện tại được giữ bằng `preserved_session_ref`; mật khẩu mới phải khác mật khẩu cũ và vẫn theo chính sách BCrypt hiện có. Backend ghi `PASSWORD_CHANGED`, `SESSION_REVOKED` hoặc `OTHER_SESSIONS_REVOKED` vào bảng audit đã có, không ghi mật khẩu, cookie hay mã phiên.
+
+PostgreSQL và Redis không chung transaction. Backend chỉ xóa các phiên Redis khác **sau** khi thay đổi trong PostgreSQL đã commit. Nếu không xác nhận được việc dọn Redis, API trả 503 thay vì báo thành công; mật khẩu hoặc generation có thể đã thay đổi, còn các phiên cũ vẫn bị chặn khi gọi API. Người dùng nên tải lại trang trước khi thử tiếp, không tự động gửi lại yêu cầu đổi mật khẩu. Với một phiên bị đăng xuất riêng lẻ, backend kiểm tra việc xóa trên Redis trước khi trả 204.
+
+Trước Phase 18A, cấu hình dùng khóa `spring.session.redis.namespace` mà Spring Boot 4.1.1 không còn nhận; phiên thực tế nằm ở namespace mặc định `spring:session` và không có principal index. Phase này chuyển sang khóa `spring.session.data.redis.*`, namespace `ams:session` và indexed repository. Sau khi triển khai, **mọi phiên cũ phải đăng nhập lại**; dữ liệu Redis cũ không bị xóa thủ công và sẽ tự hết hạn. Không thể liệt kê phiên cũ như phiên mới. Đây là chính sách chuyển tiếp có chủ ý để không âm thầm bỏ sót một phiên vẫn dùng được.
 
 ## Kiểm chứng và giới hạn
 
@@ -50,7 +64,7 @@ Email tài khoản và email nhận thông báo chưa được xác minh; không
 
 Học vụ được phân vùng theo StudentProfile liên kết với user. FK ghép chặn liên kết chéo hồ sơ, nhưng không thay thế authorization: API đọc học vụ và đồng bộ lấy user từ session rồi kiểm tra ownership ở backend. Chưa có API CRUD học vụ. Snapshot metadata và change chỉ lưu dữ liệu chuẩn hóa, không lưu raw credential/session hoặc response nguồn.
 
-Chưa có rate limiting đăng ký/đăng nhập, MFA, absolute session timeout hay quy trình quản trị/recovery. Bảng audit hiện mới là schema nền, chưa ghi sự kiện. OAuth Google Calendar đã có nền kết nối ở Phase 7A nhưng tắt mặc định, chưa kiểm chứng live và chưa tạo event. Cần bổ sung và đánh giá các biện pháp bảo vệ phù hợp trước khi mở đăng ký trên internet; test Phase 1/7A không thay thế đánh giá bảo mật production.
+Chưa có rate limiting đăng ký/đăng nhập, MFA, absolute session timeout hay quy trình đặt lại mật khẩu. Bảng audit hiện ghi các sự kiện quản lý mật khẩu và phiên, chưa phải một hệ thống giám sát bảo mật đầy đủ. OAuth Google Calendar đã có nền kết nối ở Phase 7A nhưng tắt mặc định, chưa kiểm chứng live và chưa tạo event. Cần bổ sung và đánh giá các biện pháp bảo vệ phù hợp trước khi mở đăng ký trên internet; test Phase 1/7A không thay thế đánh giá bảo mật production.
 
 ## Yêu cầu đồng bộ Phase 6A
 

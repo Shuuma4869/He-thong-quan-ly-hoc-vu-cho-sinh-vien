@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { currentUserSchema, settingsSchema, type SettingsUpdate } from "./schema";
+import { accountSessionsSchema, currentUserSchema, settingsSchema, type SettingsUpdate } from "./schema";
 
 export class ApiError extends Error {
   constructor(public readonly status: number, message: string) { super(message); }
@@ -41,4 +41,23 @@ export async function logout() { await authMutation("/api/auth/logout", "{}"); }
 export async function saveSettings(values: SettingsUpdate) {
   const response = await authMutation("/api/me/settings", JSON.stringify(values), "PUT");
   return settingsSchema.parse(await response.json());
+}
+
+export async function getAccountSessions(signal?: AbortSignal) {
+  const response = await checkResponse(await fetch("/api/me/security/sessions", {
+    credentials: "same-origin", cache: "no-store", signal,
+  }));
+  return accountSessionsSchema.parse(await response.json());
+}
+
+export async function revokeAccountSession(sessionRef: string) {
+  await authMutation(`/api/me/security/sessions/${encodeURIComponent(sessionRef)}`, "", "DELETE");
+}
+
+export async function revokeOtherAccountSessions() {
+  await authMutation("/api/me/security/sessions/others", "", "DELETE");
+}
+
+export async function changeAccountPassword(currentPassword: string, newPassword: string) {
+  await authMutation("/api/me/security/password", JSON.stringify({ currentPassword, newPassword }), "PUT");
 }
