@@ -10,6 +10,26 @@ permissions:
   contents: read
 
 jobs:
+  desktop:
+    name: Desktop Windows (development shell)
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: frontend/src-tauri
+    steps:
+      - name: Lấy mã nguồn
+        uses: actions/checkout@v7
+      - name: Cài Rust có phiên bản cố định
+        run: rustup toolchain install 1.90.0 --profile minimal --component rustfmt --component clippy
+      - name: Kiểm tra định dạng Rust
+        run: cargo +1.90.0 fmt --check
+      - name: Kiểm tra cảnh báo Rust
+        run: cargo +1.90.0 clippy --locked --all-targets -- -D warnings
+      - name: Kiểm tra chính sách điều hướng
+        run: cargo +1.90.0 test --locked
+      - name: Build cửa sổ development
+        run: cargo +1.90.0 build --locked
+
   frontend:
     name: Frontend
     runs-on: ubuntu-latest

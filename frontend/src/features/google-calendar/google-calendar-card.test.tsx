@@ -21,9 +21,18 @@ function show(callbackResult?: string) {
 }
 
 beforeEach(() => vi.mocked(api.getGoogleConnection).mockResolvedValue(disconnected));
-afterEach(() => vi.clearAllMocks());
+afterEach(() => { vi.clearAllMocks(); Reflect.deleteProperty(window, "__AMS_DESKTOP_DEV__"); });
 
 describe("Google Calendar settings", () => {
+  it("explains desktop OAuth and never starts an authorization request", async () => {
+    Object.defineProperty(window, "__AMS_DESKTOP_DEV__", { value: true, configurable: true });
+    show();
+    const button = await screen.findByRole("button", { name: "Kết nối" });
+    expect(button).toBeDisabled();
+    expect(screen.getByText(/Cửa sổ desktop có phiên riêng/)).toBeInTheDocument();
+    await userEvent.click(button);
+    expect(api.startGoogleAuthorization).not.toHaveBeenCalled();
+  });
   it("shows unavailable without pretending the user is connected", async () => {
     vi.mocked(api.getGoogleConnection).mockResolvedValue({ ...disconnected, available: false });
     show("connected");

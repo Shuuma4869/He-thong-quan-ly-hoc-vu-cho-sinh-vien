@@ -17,6 +17,9 @@ fn main() {
                 .title("AMS (local development)")
                 .inner_size(1200.0, 800.0)
                 .min_inner_size(320.0, 480.0)
+                .initialization_script(
+                    "Object.defineProperty(window, '__AMS_DESKTOP_DEV__', { value: true });",
+                )
                 .on_navigation(is_local_frontend)
                 .on_new_window(|_, _| tauri::webview::NewWindowResponse::Deny)
                 .build()?;
@@ -48,6 +51,11 @@ mod tests {
             "https://accounts.google.com/",
             "file:///C:/private.txt",
             "http://user@localhost:3000/",
+            "http://localhost:3000@evil.test/",
+            "http://localhost.:3000/",
+            "http://[::1]:3000/",
+            "javascript:alert(1)",
+            "data:text/html,untrusted",
         ] {
             assert!(!is_local_frontend(&url.parse().unwrap()), "{url}");
         }

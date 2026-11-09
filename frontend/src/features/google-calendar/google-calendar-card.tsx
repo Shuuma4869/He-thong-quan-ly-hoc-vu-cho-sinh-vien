@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
+import { isDesktopDev, useDesktopDev } from "@/lib/desktop";
 import { disconnectGoogle, getGoogleConnection, openGoogleAuthorization, retryGoogleSetup, startGoogleAuthorization } from "./api";
 
 const resultMessage: Record<string, string> = {
@@ -17,8 +18,10 @@ export function GoogleCalendarCard({ callbackResult, userId }: { callbackResult?
   const [error, setError] = useState("");
   const [message, setMessage] = useState("");
   const current = connection.data;
+  const desktop = useDesktopDev();
 
   async function connect() {
+    if (isDesktopDev()) return;
     setBusy(true); setError(""); setMessage("");
     try { openGoogleAuthorization(await startGoogleAuthorization()); }
     catch (cause) { setError(cause instanceof Error ? cause.message : "Không thể bắt đầu kết nối."); setBusy(false); }
@@ -46,6 +49,7 @@ export function GoogleCalendarCard({ callbackResult, userId }: { callbackResult?
   return <div className="space-y-4 rounded-2xl border bg-card p-6">
     <div><h2 className="text-lg font-semibold">Google Calendar</h2>
       <p className="mt-1 text-sm text-muted">AMS chỉ tạo và quản lý một lịch riêng. Lịch học và lịch thi chưa được chuyển sang Google.</p></div>
+    {desktop && <p role="status" className="rounded-lg bg-primary-soft p-3 text-sm">Để cấp quyền Google, hãy mở http://localhost:3000/settings trong trình duyệt và đăng nhập AMS tại đó. Cửa sổ desktop có phiên riêng và chưa hỗ trợ OAuth. Sau khi kết nối trên web, hãy tải lại trạng thái ở desktop.</p>}
     {connection.isPending ? <p role="status" className="text-sm text-muted">Đang kiểm tra kết nối…</p>
       : connection.isError ? <div className="space-y-2"><p role="alert" className="text-sm text-red-600">Không thể kiểm tra kết nối Google Calendar.</p><Button type="button" variant="outline" onClick={() => void connection.refetch()}>Thử lại</Button></div>
       : <><p className="text-sm">Trạng thái: <span className="font-medium">{label}</span></p>
@@ -55,7 +59,7 @@ export function GoogleCalendarCard({ callbackResult, userId }: { callbackResult?
         {error && <p role="alert" className="text-sm text-red-600">{error}</p>}
         {current?.available && <div className="flex flex-wrap gap-2">
           {(current.status === "DISCONNECTED" || current.status === "RECONNECTION_REQUIRED") &&
-            <Button type="button" disabled={busy} onClick={() => void connect()}>{busy ? "Đang mở…" : current.status === "DISCONNECTED" ? "Kết nối" : "Kết nối lại"}</Button>}
+            <Button type="button" disabled={busy || desktop} onClick={() => void connect()}>{busy ? "Đang mở…" : current.status === "DISCONNECTED" ? "Kết nối" : "Kết nối lại"}</Button>}
           {current.status === "SETUP_REQUIRED" && <Button type="button" disabled={busy} onClick={() => void setup()}>{busy ? "Đang xử lý…" : "Hoàn tất thiết lập"}</Button>}
           {current.status !== "DISCONNECTED" && <Button type="button" variant="outline" disabled={busy} onClick={() => void disconnect()}>Ngắt kết nối</Button>}
         </div>}</>}
